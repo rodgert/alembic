@@ -119,6 +119,12 @@
       ;; resonance [0,1] maps to Q [0.707107, 25.0]: self-oscillates at resonance=1.
       :ladder   (format "ve.moogLadder(%s, (0.707107 + %s * 24.292893), %s)"
                         (i :cutoff) (i :resonance) (i :input))
+      ;; fi.svf_morph(freq_hz, Q, blend, x) — ZDF SVF with continuous LP/BP/HP morph.
+      ;; cutoff [0,1] → Hz (linear: 0→0, 1→Nyquist via ma.SR*0.5).
+      ;; resonance [0,1] → Q [0.5, 10].
+      ;; mode [0,1] → blend [0,2]: 0=LP, 0.5=BP, 1=HP.
+      :svf      (format "fi.svf_morph((%s * ma.SR * 0.5), (0.5 + %s * 9.5), (%s * 2.0), %s)"
+                        (i :cutoff) (i :resonance) (i :mode) (i :input))
       :faust    (:source node)
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))

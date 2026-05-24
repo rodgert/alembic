@@ -137,6 +137,24 @@
   (testing "patch rate is :sample"
     (is (= :sample (:rate ladder-test)))))
 
+(defpatch! svf-test {}
+  (let [osc (phasor 220.0)
+        sig (sine-bi osc)
+        out (svf sig 0.3 0.5 0.0)]
+    (output out)))
+
+(deftest svf-node-test
+  (testing "has exactly one :svf node"
+    (is (= 1 (count (nodes-by-op svf-test :svf)))))
+  (testing ":svf node has all four inlets"
+    (let [node (first (nodes-by-op svf-test :svf))]
+      (is (contains? (:inputs node) :input))
+      (is (contains? (:inputs node) :cutoff))
+      (is (contains? (:inputs node) :resonance))
+      (is (contains? (:inputs node) :mode))))
+  (testing ":svf node is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op svf-test :svf)))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Named outputs
 ;; ---------------------------------------------------------------------------

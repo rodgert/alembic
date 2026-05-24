@@ -224,6 +224,55 @@
       (is (str/includes? src "ve.moogLadder(")))))
 
 ;; ---------------------------------------------------------------------------
+;; Level 1 filters — :svf
+;; ---------------------------------------------------------------------------
+
+(defpatch! svf-emit-patch {}
+  (let [osc (phasor 110.0)
+        sig (sine-bi osc)
+        out (svf sig 0.3 0.5 0.0)]
+    (output out)))
+
+(deftest svf-emit-test
+  (let [src (emit-faust svf-emit-patch)]
+    (testing "emits fi.svf_morph call"
+      (is (str/includes? src "fi.svf_morph(")))
+    (testing "cutoff scaled via ma.SR"
+      (is (str/includes? src "ma.SR")))
+    (testing "resonance rescaling constants present"
+      (is (str/includes? src "0.5"))
+      (is (str/includes? src "9.5")))
+    (testing "mode scaling by 2.0 present"
+      (is (str/includes? src "2.0")))
+    (testing "osc node appears before svf node (topo order)"
+      (let [lines      (str/split-lines src)
+            idx-of     (fn [pat] (first (keep-indexed #(when (re-find pat %2) %1) lines)))
+            svf-line   (idx-of #"fi\.svf_morph")
+            osc-line   (idx-of #"os\.phasor")]
+        (is (some? svf-line))
+        (is (< osc-line svf-line))))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! svf-with-params-patch
+  {:params {:cutoff    {:range [0.0 1.0] :default 0.3}
+            :resonance {:range [0.0 1.0] :default 0.5}
+            :mode      {:range [0.0 1.0] :default 0.0}}}
+  (let [osc (phasor 220.0)
+        sig (sine-bi osc)
+        out (svf sig (param :cutoff) (param :resonance) (param :mode))]
+    (output out)))
+
+(deftest svf-param-modulated-test
+  (let [src (emit-faust svf-with-params-patch)]
+    (testing "cutoff, resonance, mode params appear as hsliders"
+      (is (str/includes? src "\"cutoff\""))
+      (is (str/includes? src "\"resonance\""))
+      (is (str/includes? src "\"mode\"")))
+    (testing "fi.svf_morph still emitted"
+      (is (str/includes? src "fi.svf_morph(")))))
+
+;; ---------------------------------------------------------------------------
 ;; Named outputs — gap padding in process declaration
 ;; ---------------------------------------------------------------------------
 
