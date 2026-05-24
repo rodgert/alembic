@@ -115,6 +115,29 @@
     (is (= #{0 1} (set (map :channel (:outputs stereo-test)))))))
 
 ;; ---------------------------------------------------------------------------
+;; Level 1 filters — :ladder
+;; ---------------------------------------------------------------------------
+
+(defpatch! ladder-test {}
+  (let [osc (phasor 220.0)
+        sig (sine-bi osc)
+        out (ladder sig 0.3 0.5)]
+    (output out)))
+
+(deftest ladder-node-test
+  (testing "has exactly one :ladder node"
+    (is (= 1 (count (nodes-by-op ladder-test :ladder)))))
+  (testing ":ladder node has :input :cutoff :resonance inlets"
+    (let [node (first (nodes-by-op ladder-test :ladder))]
+      (is (contains? (:inputs node) :input))
+      (is (contains? (:inputs node) :cutoff))
+      (is (contains? (:inputs node) :resonance))))
+  (testing ":ladder node is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op ladder-test :ladder))))))
+  (testing "patch rate is :sample"
+    (is (= :sample (:rate ladder-test)))))
+
+;; ---------------------------------------------------------------------------
 ;; Named outputs
 ;; ---------------------------------------------------------------------------
 

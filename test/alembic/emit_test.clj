@@ -181,6 +181,49 @@
     (is (str/includes? src "os.osc(440.0)"))))
 
 ;; ---------------------------------------------------------------------------
+;; Level 1 filters — :ladder
+;; ---------------------------------------------------------------------------
+
+(defpatch! ladder-emit-patch {}
+  (let [osc (phasor 110.0)
+        sig (sine-bi osc)
+        out (ladder sig 0.25 0.6)]
+    (output out)))
+
+(deftest ladder-emit-test
+  (let [src (emit-faust ladder-emit-patch)]
+    (testing "emits ve.moogLadder call"
+      (is (str/includes? src "ve.moogLadder(")))
+    (testing "resonance rescaling constants present"
+      (is (str/includes? src "0.707107"))
+      (is (str/includes? src "24.292893")))
+    (testing "cutoff and resonance nodes appear before ladder node (topo order)"
+      (let [lines      (str/split-lines src)
+            idx-of     (fn [pat] (first (keep-indexed #(when (re-find pat %2) %1) lines)))
+            moog-line  (idx-of #"ve\.moogLadder")
+            osc-line   (idx-of #"os\.phasor")]
+        (is (some? moog-line))
+        (is (< osc-line moog-line))))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! ladder-with-params-patch
+  {:params {:cutoff    {:range [0.0 1.0] :default 0.3}
+            :resonance {:range [0.0 1.0] :default 0.0}}}
+  (let [osc (phasor 220.0)
+        sig (sine-bi osc)
+        out (ladder sig (param :cutoff) (param :resonance))]
+    (output out)))
+
+(deftest ladder-param-modulated-test
+  (let [src (emit-faust ladder-with-params-patch)]
+    (testing "cutoff and resonance params appear as hsliders"
+      (is (str/includes? src "\"cutoff\""))
+      (is (str/includes? src "\"resonance\"")))
+    (testing "ve.moogLadder still emitted"
+      (is (str/includes? src "ve.moogLadder(")))))
+
+;; ---------------------------------------------------------------------------
 ;; Named outputs — gap padding in process declaration
 ;; ---------------------------------------------------------------------------
 

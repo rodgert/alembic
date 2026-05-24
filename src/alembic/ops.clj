@@ -21,7 +21,12 @@
    :fold     [:input :lo :hi]
    :clip     [:input :lo :hi]
    :smooth   [:input]
-   :ar-env   [:gate :attack :release]})
+   :ar-env   [:gate :attack :release]
+   ;; Level 1 filters
+   ;; :ladder — ZDF 4-pole Moog ladder (ve.moogLadder, Zavalishin model)
+   ;;   cutoff    normalised frequency [0, 1]  (0.5 ≈ Nyquist)
+   ;;   resonance normalised Q         [0, 1]  (1 → self-oscillation / sine)
+   :ladder   [:input :cutoff :resonance]})
 
 (def node-rate
   "Maps op keyword → rate keyword (:sample | :block | :beat)."
@@ -43,5 +48,6 @@
    :clip     :sample
    :smooth   :sample
    :ar-env   :sample
+   :ladder   :sample
    :param    :block
    :const    :sample})

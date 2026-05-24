@@ -114,6 +114,11 @@
       :clip     (format "max(%s, min(%s, %s))" (i :lo) (i :hi) (i :input))
       :smooth   (format "(%s : si.smoo)" (i :input))
       :ar-env   (format "en.ar(%s, %s, %s)" (i :attack) (i :release) (i :gate))
+      ;; Level 1 filters
+      ;; ve.moogLadder(normFreq, Q, x) — Zavalishin ZDF 4-pole Moog ladder.
+      ;; resonance [0,1] maps to Q [0.707107, 25.0]: self-oscillates at resonance=1.
+      :ladder   (format "ve.moogLadder(%s, (0.707107 + %s * 24.292893), %s)"
+                        (i :cutoff) (i :resonance) (i :input))
       :faust    (:source node)
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))
