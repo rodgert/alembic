@@ -2,6 +2,32 @@
 (ns alembic.patch
   (:require [alembic.ops :as ops]))
 
+;; ---------------------------------------------------------------------------
+;; Named output semantics
+;;
+;; (output :cv expr)    → channel 0   modulator_output.cv
+;; (output :aux expr)   → channel 1   modulator_output.aux
+;; (output :gate expr)  → channel 2   modulator_output.gate  (float > 0.5 → true)
+;; (output :gate2 expr) → channel 3   modulator_output.gate2
+;; (output :out0 expr)  → channel 4
+;; (output :out1 expr)  → channel 5   (etc.)
+;;
+;; Unnamed (output expr) assigns channels sequentially from 0 as before.
+;; The reserved param name "beat" is auto-populated at block rate by the
+;; faust_modulator runtime with the fractional beat phase ∈ [0, 1).
+;; ---------------------------------------------------------------------------
+
+(def ^:private semantic-channels
+  {:cv 0 :aux 1 :gate 2 :gate2 3})
+
+(defn- semantic->channel [k]
+  (or (get semantic-channels k)
+      (when-let [[_ n] (re-matches #"out(\d+)" (name k))]
+        (+ 4 (Long/parseLong n)))
+      (throw (ex-info (str "Unknown output semantic: " k
+                           " — use :cv :aux :gate :gate2 :out0 :out1 ...")
+                      {:semantic k}))))
+
 (defn- next-id! [counter]
   (keyword (str "n" (let [n @counter]
                       (swap! counter inc)
@@ -77,10 +103,18 @@
 (defn- process-body! [body-forms state outputs channel-counter]
   (doseq [form body-forms]
     (if (and (seq? form) (= (first form) 'output))
-      (let [src-id (walk-expr (second form) state)
-            ch     @channel-counter]
-        (swap! channel-counter inc)
-        (swap! outputs conj {:node src-id :channel ch :name "Main"}))
+      (let [named?  (keyword? (second form))
+            sem     (when named? (second form))
+            expr    (if named? (nth form 2) (second form))
+            src-id  (walk-expr expr state)
+            ch      (if named?
+                      (semantic->channel sem)
+                      (let [n @channel-counter]
+                        (swap! channel-counter inc)
+                        n))]
+        (swap! outputs conj (cond-> {:node src-id :channel ch
+                                     :name (if named? (name sem) "Main")}
+                              named? (assoc :semantic sem))))
       (walk-expr form state))))
 
 (defn- dominant-rate [nodes]
@@ -101,8 +135,17 @@
   mul, add, sub, div, history, delay, sah, delta, wrap, fold, clip, smooth,
   ar-env. Use (param kw) for block-rate plugin parameters.
 
-  Each body form should be (output expr). Multiple output calls produce
-  multi-channel outputs (channel 0, 1, ...).
+  Output forms:
+    (output expr)         — unnamed, assigned channel 0, 1, 2 … in declaration order
+    (output :cv   expr)   — channel 0 → modulator_output.cv
+    (output :aux  expr)   — channel 1 → modulator_output.aux
+    (output :gate expr)   — channel 2 → modulator_output.gate (float > 0.5)
+    (output :gate2 expr)  — channel 3 → modulator_output.gate2
+    (output :out0 expr)   — channel 4 (extra outputs)
+    (output :outN expr)   — channel 4+N
+
+  When compiled as a faust_modulator (375 Hz), the reserved param name
+  \"beat\" is auto-populated with the fractional beat phase ∈ [0, 1).
 
   opts must be a literal map. To construct a graph at runtime, build the
   normalised map directly — it is a plain Clojure value."

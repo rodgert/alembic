@@ -181,6 +181,37 @@
     (is (str/includes? src "os.osc(440.0)"))))
 
 ;; ---------------------------------------------------------------------------
+;; Named outputs — gap padding in process declaration
+;; ---------------------------------------------------------------------------
+
+(defpatch! named-cv-gate-patch {}
+  (let [cv-sig   (phasor 1.0)
+        gate-sig (sine-bi cv-sig)]
+    (output :cv   cv-sig)
+    (output :gate gate-sig)))
+
+(deftest named-gap-emit-test
+  (let [src (emit-faust named-cv-gate-patch)]
+    (testing "gap at channel 1 (aux) padded with 0.0"
+      ;; channels 0=cv, 1=gap(0.0), 2=gate → process = nX, 0.0, nY;
+      (is (re-find #"process = n\d+, 0\.0, n\d+;" src)))))
+
+(defpatch! named-all-four-patch {}
+  (let [ph   (phasor 1.0)
+        sig  (sine-bi ph)
+        gate (tri ph)
+        g2   (mul sig gate)]
+    (output :cv    sig)
+    (output :aux   gate)
+    (output :gate  g2)
+    (output :gate2 sig)))
+
+(deftest named-all-four-emit-test
+  (let [src (emit-faust named-all-four-patch)]
+    (testing "four contiguous outputs, no padding needed"
+      (is (re-find #"process = n\d+, n\d+, n\d+, n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
 ;; Error — no outputs
 ;; ---------------------------------------------------------------------------
 

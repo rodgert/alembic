@@ -115,6 +115,65 @@
     (is (= #{0 1} (set (map :channel (:outputs stereo-test)))))))
 
 ;; ---------------------------------------------------------------------------
+;; Named outputs
+;; ---------------------------------------------------------------------------
+
+(defpatch! named-cv-test {}
+  (let [x (phasor 1.0)]
+    (output :cv x)))
+
+(deftest named-output-cv-test
+  (testing ":cv output gets channel 0 with :semantic :cv"
+    (let [out (first (:outputs named-cv-test))]
+      (is (= 0   (:channel out)))
+      (is (= :cv (:semantic out)))
+      (is (= "cv" (:name out))))))
+
+(defpatch! named-gate-test {}
+  (let [x (phasor 1.0)]
+    (output :gate x)))
+
+(deftest named-output-gate-test
+  (testing ":gate output gets channel 2"
+    (let [out (first (:outputs named-gate-test))]
+      (is (= 2     (:channel out)))
+      (is (= :gate (:semantic out))))))
+
+(defpatch! named-out0-test {}
+  (let [x (phasor 1.0)]
+    (output :out0 x)))
+
+(deftest named-output-out0-test
+  (testing ":out0 output gets channel 4"
+    (is (= 4 (:channel (first (:outputs named-out0-test)))))))
+
+(defpatch! named-multi-test {}
+  (let [cv-sig   (phasor 1.0)
+        gate-sig (sine-bi cv-sig)]
+    (output :cv   cv-sig)
+    (output :gate gate-sig)))
+
+(deftest named-multi-output-test
+  (testing "cv on channel 0, gate on channel 2, gap at channel 1 preserved in graph"
+    (let [by-sem (into {} (map (fn [o] [(:semantic o) (:channel o)])
+                               (:outputs named-multi-test)))]
+      (is (= 0 (by-sem :cv)))
+      (is (= 2 (by-sem :gate)))))
+  (testing "two output entries recorded"
+    (is (= 2 (count (:outputs named-multi-test))))))
+
+(defpatch! mixed-named-unnamed-test {}
+  (let [x (phasor 1.0)
+        y (phasor 2.0)]
+    (output :cv x)
+    (output y)))
+
+(deftest unnamed-beside-named-test
+  (testing "named output carries :semantic, unnamed does not"
+    (is (some #(= :cv (:semantic %)) (:outputs mixed-named-unnamed-test)))
+    (is (some #(nil? (:semantic %))  (:outputs mixed-named-unnamed-test)))))
+
+;; ---------------------------------------------------------------------------
 ;; Dominant rate
 ;; ---------------------------------------------------------------------------
 

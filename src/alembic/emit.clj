@@ -140,10 +140,12 @@
                                (node-rhs node params)
                                ";")))
                       order)
-        proc    (->> outputs
-                     (sort-by :channel)
-                     (map (comp node-ident :node))
-                     (str/join ", "))
+        proc    (let [sorted (sort-by :channel outputs)
+                       max-ch (if (seq sorted) (:channel (last sorted)) -1)
+                       by-ch  (into {} (map (fn [o] [(:channel o) (node-ident (:node o))]) sorted))]
+                   (->> (range (inc max-ch))
+                        (map #(get by-ch % "0.0"))
+                        (str/join ", ")))
         sections [["import(\"stdfaust.lib\");"]
                   [""]
                   defs
