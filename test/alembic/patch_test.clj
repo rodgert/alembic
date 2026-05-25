@@ -928,3 +928,44 @@
           shape-id (get-in node [:inputs :shape])]
       (is (= :sample (:rate (get nodes shape-id)))))))
 
+;; ---------------------------------------------------------------------------
+;; (faust ...) inline authoring form
+;; ---------------------------------------------------------------------------
+
+(defpatch! faust-no-inlets-test {}
+  (let [out (faust "os.osc(440.0)")]
+    (output out)))
+
+(deftest faust-node-no-inlets-test
+  (testing "has exactly one :faust node"
+    (is (= 1 (count (nodes-by-op faust-no-inlets-test :faust)))))
+  (let [node (first (nodes-by-op faust-no-inlets-test :faust))]
+    (testing ":faust node carries :source string"
+      (is (= "os.osc(440.0)" (:source node))))
+    (testing ":faust node has empty :inputs"
+      (is (empty? (:inputs node))))
+    (testing ":faust node is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(defpatch! faust-wired-inlet-test {}
+  (let [freq (param :freq)
+        out  (faust "os.osc(%freq)" {:freq freq})]
+    (output out)))
+
+(deftest faust-node-wired-inlet-test
+  (testing "has exactly one :faust node"
+    (is (= 1 (count (nodes-by-op faust-wired-inlet-test :faust)))))
+  (let [node (first (nodes-by-op faust-wired-inlet-test :faust))]
+    (testing ":faust node has :freq inlet"
+      (is (contains? (:inputs node) :freq)))
+    (testing ":freq inlet points to a valid node id"
+      (is (contains? (:nodes faust-wired-inlet-test) (get-in node [:inputs :freq]))))
+    (testing ":source string preserved verbatim on node"
+      (is (= "os.osc(%freq)" (:source node))))))
+
+(deftest faust-rate-crossing-test
+  (testing "block-rate inlet wired to :faust node creates rate-crossing edge"
+    (let [crossings  (filter :rate-crossing? (:edges faust-wired-inlet-test))
+          faust-node (first (nodes-by-op faust-wired-inlet-test :faust))]
+      (is (some #(= (:id faust-node) (:to %)) crossings)))))
+

@@ -982,3 +982,45 @@
   (testing "curve=0 (concave) differs from curve=0.5 (linear)"
     (is (not= (emit-faust segment-triangle-emit)
               (emit-faust segment-curved-emit)))))
+
+;; ---------------------------------------------------------------------------
+;; (faust ...) emit — %inlet-name substitution
+;; ---------------------------------------------------------------------------
+
+(defpatch! faust-emit-no-inlets {}
+  (let [out (faust "os.osc(440.0)")]
+    (output out)))
+
+(deftest faust-emit-no-inlets-test
+  (let [src (emit-faust faust-emit-no-inlets)]
+    (testing "source string appears verbatim"
+      (is (str/includes? src "os.osc(440.0)")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! faust-emit-with-inlet {}
+  (let [freq (param :freq)
+        out  (faust "os.osc(%freq)" {:freq freq})]
+    (output out)))
+
+(deftest faust-emit-inlet-substitution-test
+  (let [src (emit-faust faust-emit-with-inlet)]
+    (testing "%freq placeholder replaced with a node identifier"
+      (is (re-find #"os\.osc\(n\d+\)" src)))
+    (testing "no %freq literal remains in emitted output"
+      (is (not (str/includes? src "%freq"))))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! faust-emit-prefix-test {}
+  (let [dry (phasor 1.0)
+        wet (sine-bi dry)
+        out (faust "(%in + %in-wet * 0.5)" {:in dry :in-wet wet})]
+    (output out)))
+
+(deftest faust-emit-prefix-collision-test
+  (let [src (emit-faust faust-emit-prefix-test)]
+    (testing "longer %in-wet substituted before %in — no residual placeholder"
+      (is (not (str/includes? src "%in"))))
+    (testing "resulting expression has two node refs"
+      (is (re-find #"\(n\d+ \+ n\d+ \* 0\.5\)" src)))))
