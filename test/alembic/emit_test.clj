@@ -1219,3 +1219,86 @@
 (deftest ears-validates-test
   (testing "full ears envelope follower patch produces valid Faust"
     (is (nil? (alembic.compile/validate ears-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Ripples — dual audio-in, three simultaneous filter outputs
+;; ---------------------------------------------------------------------------
+
+(defpatch! ripples-emit-patch
+  {:params {:freq   {:range [0.0 1.0]  :default 0.5}
+            :res    {:range [0.0 1.0]  :default 0.0}
+            :fm-amt {:range [-1.0 1.0] :default 0.0}
+            :drive  {:range [0.0 1.0]  :default 0.0}}}
+  (let [in     (audio-in)
+        fm-cv  (audio-in)
+        driven (wave-fold (mul in (add 1.0 (mul (param :drive) 7.0))))
+        cutoff (clip (add (param :freq) (mul fm-cv (param :fm-amt))) 0.0 1.0)
+        lp4    (ladder driven cutoff (param :res))
+        lp2    (svf driven cutoff (param :res) 0.0)
+        bp     (svf driven cutoff (param :res) 0.5)]
+    (output lp4)
+    (output lp2)
+    (output bp)))
+
+(deftest ripples-emit-test
+  (let [src (emit-faust ripples-emit-patch)]
+    (testing "two audio-in nodes as alembic_dsp parameters"
+      (is (re-find #"alembic_dsp\(n\d+, n\d+\) =" src)))
+    (testing "LP4 emits ve.moogLadder"
+      (is (str/includes? src "ve.moogLadder(")))
+    (testing "LP2 and BP emit fi.svf_morph (two instances)"
+      (is (= 2 (count (re-seq #"fi\.svf_morph" src)))))
+    (testing "LP2 blend=0.0 — const node 0.0 defined, mode scaled via * 2.0"
+      (is (and (re-find #"n\d+ = 0\.0;" src)
+               (re-find #"\* 2\.0\)" src))))
+    (testing "BP blend=0.5 — const node 0.5 defined (× 2.0 = 1.0 at runtime)"
+      (is (re-find #"n\d+ = 0\.5;" src)))
+    (testing "three process outputs"
+      (is (re-find #"alembic_dsp\(n\d+, n\d+\) = n\d+, n\d+, n\d+" src)))
+    (testing "wave-fold drive stage present"
+      (is (str/includes? src "floor(")))
+    (testing "FM clip uses max/min"
+      (is (str/includes? src "max(n")))))
+
+(deftest ripples-validates-test
+  (testing "ripples patch produces valid Faust"
+    (is (nil? (alembic.compile/validate ripples-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; :sqrt — square root op
+;; ---------------------------------------------------------------------------
+
+(defpatch! sqrt-emit-patch {}
+  (let [in  (audio-in)
+        out (sqrt (abs in))]
+    (output out)))
+
+(deftest sqrt-emit-test
+  (let [src (emit-faust sqrt-emit-patch)]
+    (testing "sqrt emits Faust sqrt()"
+      (is (str/includes? src "sqrt(")))
+    (testing "abs feeds into sqrt"
+      (is (re-find #"sqrt\(n\d+\)" src)))
+    (testing "abs is also present"
+      (is (str/includes? src "abs(")))))
+
+(deftest sqrt-validates-test
+  (testing "sqrt patch produces valid Faust"
+    (is (nil? (alembic.compile/validate sqrt-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Dead secondary port pruning
+;; ---------------------------------------------------------------------------
+
+(defpatch! comparator-pruned-patch {}
+  (let [in    (audio-in)
+        cmp   (comparator in 0.0)
+        gate  (:out cmp)]
+    (output gate)))
+
+(deftest dead-secondary-port-pruned-test
+  (let [src (emit-faust comparator-pruned-patch)]
+    (testing "primary comparator output is present"
+      (is (str/includes? src "float(")))
+    (testing "unused comparator-inv secondary port is pruned from emitted Faust"
+      (is (not (re-find #"1\.0 - n\d+" src))))))
