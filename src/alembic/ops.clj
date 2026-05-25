@@ -77,6 +77,11 @@
    ;; :table — read-only lookup table with interpolation
    ;;   opts: {:data [floats] :size N :mode :wrap|:clamp|:fold}
    :table       [:index]
+   ;; :buffer — read-write circular buffer (rwtable)
+   ;;   opts: {:size 48000}  compile-time allocation in samples
+   ;;   write-pos and read-pos are float signals; int() is applied at emit time.
+   ;;   write-gate and write-mode are deferred (caller manages via write-pos).
+   :buffer      [:in :write-pos :read-pos]
    ;; :select — N-to-1 signal multiplexer via ba.selectn
    ;;   opts: {:n 2}  (n >= 2; default 2)
    ;;   inlets: :in-0 through :in-(n-1), then :index
@@ -126,6 +131,7 @@
    :counter     :sample
    :table       :sample
    :select      :sample
+   :buffer      :sample
    :param       :block
    :const       :sample})
 
