@@ -969,3 +969,75 @@
           faust-node (first (nodes-by-op faust-wired-inlet-test :faust))]
       (is (some #(= (:id faust-node) (:to %)) crossings)))))
 
+;; ---------------------------------------------------------------------------
+;; Beat-domain ops — :beat-phase :beat-bpm :beat-trigger
+;; ---------------------------------------------------------------------------
+
+(defpatch! beat-phase-patch {}
+  (let [ph  (beat-phase)
+        out (sine-bi ph)]
+    (output out)))
+
+(deftest beat-phase-node-test
+  (testing "has exactly one :beat-phase node"
+    (is (= 1 (count (nodes-by-op beat-phase-patch :beat-phase)))))
+  (let [node (first (nodes-by-op beat-phase-patch :beat-phase))]
+    (testing ":beat-phase has no inlets"
+      (is (empty? (:inputs node))))
+    (testing ":beat-phase is :beat rate"
+      (is (= :beat (:rate node))))))
+
+(deftest beat-phase-rate-crossing-test
+  (testing ":beat-phase → :sine-bi creates rate-crossing edge"
+    (let [crossings  (filter :rate-crossing? (:edges beat-phase-patch))
+          sine-node  (first (nodes-by-op beat-phase-patch :sine-bi))]
+      (is (some #(= (:id sine-node) (:to %)) crossings)))))
+
+(defpatch! beat-bpm-patch {}
+  (let [bpm (beat-bpm)
+        hz  (div bpm 60.0)
+        out (phasor hz)]
+    (output out)))
+
+(deftest beat-bpm-node-test
+  (testing "has exactly one :beat-bpm node"
+    (is (= 1 (count (nodes-by-op beat-bpm-patch :beat-bpm)))))
+  (let [node (first (nodes-by-op beat-bpm-patch :beat-bpm))]
+    (testing ":beat-bpm has no inlets"
+      (is (empty? (:inputs node))))
+    (testing ":beat-bpm is :block rate"
+      (is (= :block (:rate node)))))
+  (testing ":beat-bpm → :div creates rate-crossing edge"
+    (let [crossings (filter :rate-crossing? (:edges beat-bpm-patch))]
+      (is (seq crossings)))))
+
+(defpatch! beat-trigger-patch {}
+  (let [ph   (beat-phase)
+        trig (beat-trigger ph)]
+    (output trig)))
+
+(deftest beat-trigger-node-test
+  (testing "has exactly one :beat-trigger node"
+    (is (= 1 (count (nodes-by-op beat-trigger-patch :beat-trigger)))))
+  (let [node (first (nodes-by-op beat-trigger-patch :beat-trigger))]
+    (testing ":beat-trigger has :phase inlet"
+      (is (contains? (:inputs node) :phase)))
+    (testing ":beat-trigger is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest beat-trigger-rate-crossing-test
+  (testing ":beat-phase → :beat-trigger creates rate-crossing edge"
+    (let [crossings  (filter :rate-crossing? (:edges beat-trigger-patch))
+          trig-node  (first (nodes-by-op beat-trigger-patch :beat-trigger))]
+      (is (some #(= (:id trig-node) (:to %)) crossings)))))
+
+(defpatch! beat-only-patch {}
+  (let [ph (beat-phase)]
+    (output ph)))
+
+(deftest beat-dominant-rate-test
+  (testing "patch with only :beat-phase has dominant rate :beat"
+    (is (= :beat (:rate beat-only-patch))))
+  (testing "adding sample-rate op promotes dominant rate to :sample"
+    (is (= :sample (:rate beat-phase-patch)))))
+
