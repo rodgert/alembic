@@ -47,8 +47,12 @@
       id)
 
     (symbol? expr)
-    (or (get @env expr)
-        (throw (ex-info (str "Unbound symbol in patch body: " expr) {:sym expr})))
+    (let [v (or (get @env expr)
+                (throw (ex-info (str "Unbound symbol in patch body: " expr) {:sym expr})))]
+      (when (map? v)
+        (throw (ex-info (str expr " is a multi-output node — use (:port-name " expr ") to select a port")
+                        {:sym expr :ports (keys v)})))
+      v)
 
     (seq? expr)
     (let [[op & args] expr]
@@ -65,6 +69,18 @@
 
         (= op 'output)
         (throw (ex-info "output must not be nested — use at top level of the patch body" {}))
+
+        (keyword? op)
+        (let [_ (when (not= 1 (count args))
+                  (throw (ex-info "Port access form requires exactly one argument: (:port-name sym)" {})))
+              sym      (first args)
+              port-map (or (get @env sym)
+                           (throw (ex-info (str "Unbound symbol: " sym) {:sym sym})))]
+          (when-not (map? port-map)
+            (throw (ex-info (str sym " is not a multi-output node") {:sym sym})))
+          (or (get port-map op)
+              (throw (ex-info (str "Unknown port " op " — available: " (keys port-map))
+                              {:port op :available (keys port-map)}))))
 
         :else
         (let [op-kw     (keyword (name op))
@@ -98,7 +114,30 @@
                      (cond-> {:from src-id :to id :inlet inlet}
                        crossing? (assoc :rate-crossing? true)
                        feedback? (assoc :feedback? true)))))
-          id)))
+          ;; Create secondary port nodes for multi-output ops
+          (let [secondary (get ops/port-node-specs op-kw {})]
+            (if (empty? secondary)
+              id
+              (into {:out id}
+                    (map (fn [[port-name spec]]
+                           (let [port-id     (next-id! counter)
+                                 port-inputs (reduce (fn [acc inlet]
+                                                       (assoc acc inlet
+                                                              (if (= inlet :source)
+                                                                id
+                                                                (get inputs inlet))))
+                                                     {}
+                                                     (:inlets spec))
+                                 port-node   (cond-> {:id   port-id
+                                                      :op   (:op spec)
+                                                      :rate rate
+                                                      :inputs port-inputs}
+                                               (seq opts) (assoc :opts opts))]
+                             (swap! nodes assoc port-id port-node)
+                             (doseq [[inlet src-id] port-inputs]
+                               (swap! edges conj {:from src-id :to port-id :inlet inlet}))
+                             [port-name port-id]))
+                         secondary)))))))
 
     :else
     (throw (ex-info (str "Cannot compile patch expression: " (pr-str expr)) {:expr expr}))))

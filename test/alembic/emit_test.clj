@@ -364,7 +364,8 @@
 
 (defpatch! comparator-emit-patch {}
   (let [osc (phasor 440.0)
-        out (comparator osc 0.0)]
+        cmp (comparator osc 0.0)
+        out (:out cmp)]
     (output out)))
 
 (deftest comparator-emit-test
@@ -461,13 +462,15 @@
 (defpatch! counter-up-emit-patch {}
   (let [clk (phasor 4.0)
         rst (phasor 0.5)
-        out (counter {:max 8 :dir :up :wrap true} clk rst)]
+        ctr (counter {:max 8 :dir :up :wrap true} clk rst)
+        out (:out ctr)]
     (output out)))
 
 (defpatch! counter-down-emit-patch {}
   (let [clk (phasor 4.0)
         rst (phasor 0.5)
-        out (counter {:max 16 :dir :down :wrap false} clk rst)]
+        ctr (counter {:max 16 :dir :down :wrap false} clk rst)
+        out (:out ctr)]
     (output out)))
 
 (deftest counter-up-emit-test
@@ -703,3 +706,50 @@
       (is (str/includes? src "ba.selectn(4,")))
     (testing "four signal node refs in the selectn call"
       (is (re-find #"ba\.selectn\(4,\s*int\(n\d+\),\s*n\d+,\s*n\d+,\s*n\d+,\s*n\d+" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Multi-output emit — :counter-carry
+;; ---------------------------------------------------------------------------
+
+(defpatch! counter-carry-emit {}
+  (let [clk   (phasor 4.0)
+        rst   (comparator clk 0.5)
+        ctr   (counter {:max 8 :dir :up :wrap true} clk (:out rst))
+        cnt   (:out ctr)
+        carry (:carry ctr)]
+    (output cnt)
+    (output carry)))
+
+(deftest counter-carry-emit-test
+  (let [src (emit-faust counter-carry-emit)]
+    (testing "counter-carry uses float() predicate"
+      (is (re-find #"float\(" src)))
+    (testing "counter-carry checks == 0.0 for :up :wrap"
+      (is (re-find #"== 0\.0" src)))
+    (testing "counter-carry uses rising-edge detection"
+      (is (re-find #"> 0\.5.*<= 0\.5" src)))
+    (testing "carry node appears after counter node in topo order"
+      (let [lines (str/split-lines src)
+            idx   (fn [re] (first (keep-indexed #(when (re-find re %2) %1) lines)))]
+        (is (< (idx #"select2") (idx #"== 0\.0")))))))
+
+;; ---------------------------------------------------------------------------
+;; Multi-output emit — :comparator-inv
+;; ---------------------------------------------------------------------------
+
+(defpatch! comparator-inv-emit {}
+  (let [sig  (phasor 1.0)
+        cmp  (comparator sig 0.5)
+        gate (:out cmp)
+        inv  (:inv-gate cmp)]
+    (output gate)
+    (output inv)))
+
+(deftest comparator-inv-emit-test
+  (let [src (emit-faust comparator-inv-emit)]
+    (testing "comparator-inv emits 1.0 - source"
+      (is (re-find #"\(1\.0 - n\d+\)" src)))
+    (testing "comparator-inv node appears after comparator node in topo order"
+      (let [lines (str/split-lines src)
+            idx   (fn [re] (first (keep-indexed #(when (re-find re %2) %1) lines)))]
+        (is (< (idx #"float\(n\d+ > n\d+\)") (idx #"1\.0 - n\d+")))))))
