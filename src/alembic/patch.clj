@@ -210,6 +210,14 @@
   hard-clip, wave-fold, naive-svf, crossover, hysteresis, damping, segment.
   Use (param kw) for block-rate plugin parameters.
 
+  Utility ops (rate-polymorphic — follow max input rate):
+    (abs x)              → absolute value; full-wave rectify at audio rate
+    (min a b)            → signal minimum; AND gate on boolean/gate signals
+    (max a b)            → signal maximum; OR gate; half-wave rectify: (max x 0.0)
+    (track-hold in gate) → level-triggered T&H; follows in while gate > 0.5,
+                           holds on falling edge. Contrast with sample-hold
+                           (edge-triggered rising edge capture). Rate :sample.
+
   Audio input:
     (audio-in)  → process-level audio input; rate :sample.
                   Each call produces a distinct input channel (first = ch 0,

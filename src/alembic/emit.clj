@@ -315,6 +315,15 @@
             (format "float((%s == %s) & %s)" src wrap-target edge))))
       ;; Secondary port of :comparator — logical inverse of the primary gate
       :comparator-inv (format "(1.0 - %s)" (i :source))
+      ;; Utility ops — stateless, rate-polymorphic
+      :abs         (format "abs(%s)" (i :in))
+      ;; min/max: signal minimum / maximum; AND / OR gate on boolean signals
+      :min         (format "min(%s, %s)" (i :a) (i :b))
+      :max         (format "max(%s, %s)" (i :a) (i :b))
+      ;; :track-hold — level-triggered T&H; follows input while gate > 0.5, holds on falling edge.
+      ;; select2(sel, on-0, on-1): when gate <= 0.5 (sel=0) return prev (_); when gate > 0.5 return in.
+      ;; Contrast with :sample-hold (ba.sAndH), which captures on the rising edge only.
+      :track-hold  (format "(select2(%s > 0.5, _, %s) ~ _)" (i :gate) (i :in))
       ;; :audio-in — process-level audio input; each node maps to one Faust _ wire.
       ;; Two :audio-in nodes → two distinct process inputs (stereo input pair).
       :audio-in    "_"

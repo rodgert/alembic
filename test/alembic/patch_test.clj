@@ -1072,3 +1072,78 @@
     (let [ids (map :id (nodes-by-op audio-in-stereo-patch :audio-in))]
       (is (= 2 (count (distinct ids)))))))
 
+;; ---------------------------------------------------------------------------
+;; Utility ops — :abs :min :max :track-hold
+;; ---------------------------------------------------------------------------
+
+(defpatch! abs-audio-patch {}
+  (let [in  (audio-in)
+        out (abs in)]
+    (output out)))
+
+(defpatch! abs-cv-patch {}
+  (let [out (abs (param :x))]
+    (output out)))
+
+(deftest abs-node-test
+  (testing "abs of audio-in is :sample rate (polymorphic follows input)"
+    (let [node (first (nodes-by-op abs-audio-patch :abs))]
+      (is (= :sample (:rate node)))))
+  (testing "abs of param is :block rate"
+    (let [node (first (nodes-by-op abs-cv-patch :abs))]
+      (is (= :block (:rate node)))))
+  (testing ":abs has :in inlet"
+    (let [node (first (nodes-by-op abs-audio-patch :abs))]
+      (is (contains? (:inputs node) :in)))))
+
+(defpatch! min-max-cv-patch {}
+  (let [a   (param :a)
+        b   (param :b)
+        lo  (min a b)
+        hi  (max a b)]
+    (output lo)
+    (output hi)))
+
+(deftest min-max-node-test
+  (testing ":min and :max of two params are :block rate"
+    (is (= :block (:rate (first (nodes-by-op min-max-cv-patch :min)))))
+    (is (= :block (:rate (first (nodes-by-op min-max-cv-patch :max))))))
+  (testing ":min has :a :b inlets"
+    (let [node (first (nodes-by-op min-max-cv-patch :min))]
+      (is (= #{:a :b} (set (keys (:inputs node)))))))
+  (testing ":max has :a :b inlets"
+    (let [node (first (nodes-by-op min-max-cv-patch :max))]
+      (is (= #{:a :b} (set (keys (:inputs node)))))))
+  (testing "min-max-cv-patch dominant-rate is :block"
+    (is (= :block (:rate min-max-cv-patch)))))
+
+(defpatch! min-max-audio-patch {}
+  (let [a (audio-in)
+        b (audio-in)]
+    (output (min a b))
+    (output (max a b))))
+
+(deftest min-max-audio-rate-test
+  (testing ":min and :max of audio-in inputs are :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op min-max-audio-patch :min)))))
+    (is (= :sample (:rate (first (nodes-by-op min-max-audio-patch :max)))))))
+
+(defpatch! track-hold-patch {}
+  (let [in   (audio-in)
+        gate (param :gate)
+        out  (track-hold in gate)]
+    (output out)))
+
+(deftest track-hold-node-test
+  (testing "has exactly one :track-hold node"
+    (is (= 1 (count (nodes-by-op track-hold-patch :track-hold)))))
+  (let [node (first (nodes-by-op track-hold-patch :track-hold))]
+    (testing ":track-hold has :in and :gate inlets"
+      (is (= #{:in :gate} (set (keys (:inputs node))))))
+    (testing ":track-hold is :sample rate (has 1-sample feedback)"
+      (is (= :sample (:rate node)))))
+  (testing ":gate (block) → :track-hold (sample) creates rate-crossing edge"
+    (let [crossings (filter :rate-crossing? (:edges track-hold-patch))
+          th-node   (first (nodes-by-op track-hold-patch :track-hold))]
+      (is (some #(= (:id th-node) (:to %)) crossings)))))
+

@@ -1123,3 +1123,59 @@
 (deftest audio-in-validates-test
   (testing "audio-in filter patch produces valid Faust"
     (is (nil? (alembic.compile/validate audio-in-filter-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Utility ops — :abs :min :max :track-hold
+;; ---------------------------------------------------------------------------
+
+(defpatch! abs-emit-patch {}
+  (let [in  (audio-in)
+        out (abs in)]
+    (output out)))
+
+(deftest abs-emit-test
+  (let [src (emit-faust abs-emit-patch)]
+    (testing "emits Faust abs() call"
+      (is (re-find #"abs\(n\d+\)" src)))
+    (testing "process delegates to alembic_dsp (audio-in present)"
+      (is (str/includes? src "process = alembic_dsp;")))))
+
+(defpatch! min-max-emit-patch {}
+  (let [a (phasor 440.0)
+        b (phasor 110.0)]
+    (output (min a b))
+    (output (max a b))))
+
+(deftest min-max-emit-test
+  (let [src (emit-faust min-max-emit-patch)]
+    (testing "emits Faust min() call"
+      (is (re-find #"min\(n\d+, n\d+\)" src)))
+    (testing "emits Faust max() call"
+      (is (re-find #"max\(n\d+, n\d+\)" src)))
+    (testing "two process outputs"
+      (is (re-find #"process = n\d+, n\d+;" src)))))
+
+(defpatch! track-hold-emit-patch {}
+  (let [in   (audio-in)
+        gate (param :gate)
+        out  (track-hold in gate)]
+    (output out)))
+
+(deftest track-hold-emit-test
+  (let [src (emit-faust track-hold-emit-patch)]
+    (testing "emits select2 for level-triggered hold"
+      (is (str/includes? src "select2(")))
+    (testing "threshold is > 0.5"
+      (is (str/includes? src "> 0.5")))
+    (testing "uses 1-sample feedback loop"
+      (is (str/includes? src "~ _")))
+    (testing "process delegates to alembic_dsp"
+      (is (str/includes? src "process = alembic_dsp;")))))
+
+(deftest kinks-validates-test
+  (testing "abs of audio-in produces valid Faust"
+    (is (nil? (alembic.compile/validate abs-emit-patch))))
+  (testing "min/max of phasors produces valid Faust"
+    (is (nil? (alembic.compile/validate min-max-emit-patch))))
+  (testing "track-hold produces valid Faust"
+    (is (nil? (alembic.compile/validate track-hold-emit-patch)))))

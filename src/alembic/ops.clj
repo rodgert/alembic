@@ -75,6 +75,16 @@
    :hard-clip   [:in]
    ;; :wave-fold — triangle wavefolder; folds input > 1 or < −1 back into [−1, 1]
    :wave-fold   [:in]
+   ;; :abs — absolute value; full-wave rectify; rate follows input
+   :abs         [:in]
+   ;; :min — signal minimum of two inputs; AND gate on boolean signals
+   :min         [:a :b]
+   ;; :max — signal maximum of two inputs; OR gate on boolean signals
+   ;;   half-wave rectify: (max x 0.0) passes positive half, zeros negative
+   :max         [:a :b]
+   ;; :track-hold — track-and-hold; follows :in while :gate > 0.5, holds on falling edge
+   ;;   Complements :sample-hold (edge-triggered) with a level-triggered variant.
+   :track-hold  [:in :gate]
    ;; :naive-svf — Chamberlin SVF; LP+HP simultaneous; cutoff capped at Nyquist/6
    ;;   cutoff    normalised [0, 1]; stability limit enforced at emit time
    ;;   resonance normalised [0, 1]
@@ -167,11 +177,20 @@
    :beat-trigger :sample  ; (phase' - phase) uses '
    :sah         :sample   ; ba.sAndH — sample-indexed
    :sample-hold :sample   ; ba.sAndH
+   :track-hold  :sample   ; select2(gate, _, in) ~ _ — 1-sample feedback
    :ar-env      :sample   ; envelope state machine
    :delay       :sample   ; delay line — sample-indexed
    :allpass     :sample   ; de.apf — delay-based
    :buffer      :sample   ; rwtable — sample-indexed
    :counter     :sample   ; edge detection via '
+   ;; ---- utility ops — stateless, rate-polymorphic ----
+   ;; :abs — absolute value; full-wave rectify when applied to audio
+   :abs         :polymorphic
+   ;; :min — signal minimum; acts as AND gate on boolean (gate) signals
+   :min         :polymorphic
+   ;; :max — signal maximum; acts as OR gate on boolean signals;
+   ;;   half-wave rectify: (max x 0.0)
+   :max         :polymorphic
    ;; ---- filters — always sample-rate ----
    :ladder      :sample
    :svf         :sample
