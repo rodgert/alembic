@@ -235,6 +235,10 @@
                                                          " — expected :wrap :clamp :fold")
                                                     {:mode mode})))]
                      (format "rdtable(%d, waveform{%s}, %s)" n data-str idx-expr))
+      ;; ba.selectn(n, index, in0, in1, …) — N-to-1 mux; index is int
+      :select      (let [n    (get (:opts node) :n 2)
+                         sigs (str/join ", " (map #(i (keyword (str "in-" %))) (range n)))]
+                     (format "ba.selectn(%d, int(%s), %s)" n (i :index) sigs))
       :faust       (:source node)
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))

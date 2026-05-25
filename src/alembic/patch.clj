@@ -73,10 +73,11 @@
               has-opts? (and (seq args) (map? (first args)))
               opts      (if has-opts? (first args) {})
               sig-args  (if has-opts? (rest args) args)
-              inlets    (or (get ops/inlet-names op-kw)
-                            (throw (ex-info (str "Unknown op: " op
-                                                 " — add an entry to alembic.ops/inlet-names")
-                                            {:op op-kw})))
+              inlets-spec (or (get ops/inlet-names op-kw)
+                              (throw (ex-info (str "Unknown op: " op
+                                                   " — add an entry to alembic.ops/inlet-names")
+                                              {:op op-kw})))
+              inlets    (if (fn? inlets-spec) (inlets-spec opts) inlets-spec)
               _         (when (not= (count inlets) (count sig-args))
                           (throw (ex-info (str op " expects " (count inlets)
                                               " arg(s), got " (count sig-args))

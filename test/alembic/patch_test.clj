@@ -595,3 +595,42 @@
         (is (= :sample (:rate (get nodes (:to edge))))))))
   (testing "patch rate is :sample"
     (is (= :sample (:rate fm-smoke-p)))))
+
+;; ---------------------------------------------------------------------------
+;; Variable-arity inlets — :select
+;; ---------------------------------------------------------------------------
+
+(defpatch! select2-test {}
+  (let [a  (phasor 110.0)
+        b  (phasor 220.0)
+        s  (select {:n 2} a b 0.0)]
+    (output s)))
+
+(deftest select-n2-patch-test
+  (testing ":select node is created"
+    (is (= 1 (count (nodes-by-op select2-test :select)))))
+  (let [node (first (nodes-by-op select2-test :select))]
+    (testing ":select node has :sample rate"
+      (is (= :sample (:rate node))))
+    (testing ":select opts store :n"
+      (is (= 2 (get-in node [:opts :n]))))
+    (testing ":select inputs has :in-0 :in-1 :index"
+      (is (contains? (:inputs node) :in-0))
+      (is (contains? (:inputs node) :in-1))
+      (is (contains? (:inputs node) :index)))))
+
+(defpatch! select4-test {}
+  (let [a (phasor 55.0)
+        b (phasor 110.0)
+        c (phasor 220.0)
+        d (phasor 440.0)
+        s (select {:n 4} a b c d 0.0)]
+    (output s)))
+
+(deftest select-n4-patch-test
+  (testing ":select n=4 node is created"
+    (is (= 1 (count (nodes-by-op select4-test :select)))))
+  (let [node (first (nodes-by-op select4-test :select))]
+    (testing ":select n=4 has four signal inlets plus :index"
+      (is (= #{:in-0 :in-1 :in-2 :in-3 :index} (set (keys (:inputs node)))))
+      (is (= 4 (get-in node [:opts :n]))))))

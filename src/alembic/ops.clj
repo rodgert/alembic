@@ -76,7 +76,14 @@
    :counter     [:clock :reset]
    ;; :table — read-only lookup table with interpolation
    ;;   opts: {:data [floats] :size N :mode :wrap|:clamp|:fold}
-   :table       [:index]})
+   :table       [:index]
+   ;; :select — N-to-1 signal multiplexer via ba.selectn
+   ;;   opts: {:n 2}  (n >= 2; default 2)
+   ;;   inlets: :in-0 through :in-(n-1), then :index
+   :select      (fn [{:keys [n] :or {n 2}}]
+                  (when (< n 2)
+                    (throw (ex-info ":select :n must be >= 2" {:n n})))
+                  (into (mapv #(keyword (str "in-" %)) (range n)) [:index]))})
 
 (def node-rate
   "Maps op keyword → rate keyword (:sample | :block | :beat)."
@@ -118,5 +125,6 @@
    :vco         :sample
    :counter     :sample
    :table       :sample
+   :select      :sample
    :param       :block
    :const       :sample})

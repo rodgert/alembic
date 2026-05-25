@@ -671,3 +671,35 @@
                   :rate    :sample}]
     (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unknown op"
           (emit-faust bad-graph)))))
+
+;; ---------------------------------------------------------------------------
+;; Variable-arity inlets — :select emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! select-emit-2 {}
+  (let [a (phasor 110.0)
+        b (phasor 220.0)
+        s (select {:n 2} a b 0.0)]
+    (output s)))
+
+(deftest select-emit-n2-test
+  (let [src (emit-faust select-emit-2)]
+    (testing "emits ba.selectn"
+      (is (str/includes? src "ba.selectn(2,")))
+    (testing "int() wraps the index"
+      (is (re-find #"ba\.selectn\(2,\s*int\(" src)))))
+
+(defpatch! select-emit-4 {}
+  (let [a (phasor 55.0)
+        b (phasor 110.0)
+        c (phasor 220.0)
+        d (phasor 440.0)
+        s (select {:n 4} a b c d 0.0)]
+    (output s)))
+
+(deftest select-emit-n4-test
+  (let [src (emit-faust select-emit-4)]
+    (testing "emits ba.selectn with n=4"
+      (is (str/includes? src "ba.selectn(4,")))
+    (testing "four signal node refs in the selectn call"
+      (is (re-find #"ba\.selectn\(4,\s*int\(n\d+\),\s*n\d+,\s*n\d+,\s*n\d+,\s*n\d+" src)))))
