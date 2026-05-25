@@ -932,3 +932,53 @@
       (is (re-find #"n\d+''" src)))
     (testing "single process output"
       (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; :segment — morphable slope waveshaper
+;; ---------------------------------------------------------------------------
+
+(defpatch! segment-triangle-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.5)]
+    (output out)))
+
+(defpatch! segment-saw-up-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 1.0 0.5)]
+    (output out)))
+
+(defpatch! segment-saw-down-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.0 0.5)]
+    (output out)))
+
+(defpatch! segment-curved-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.0)]
+    (output out)))
+
+(deftest segment-emit-test
+  (let [src (emit-faust segment-triangle-emit)]
+    (testing "emits select2 for asymmetric slope"
+      (is (str/includes? src "select2(")))
+    (testing "emits pow for curve shaping"
+      (is (str/includes? src "pow(")))
+    (testing "emits max(0.0,...) to clamp before pow"
+      (is (str/includes? src "max(0.0,")))
+    (testing "emits max(0.001,...) to guard against zero denominator"
+      (is (str/includes? src "max(0.001,")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(deftest segment-shape-variants-test
+  (testing "shape=0 (falling-saw) differs from shape=0.5 (triangle)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-saw-down-emit))))
+  (testing "shape=1 (rising-saw) differs from shape=0.5 (triangle)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-saw-up-emit)))))
+
+(deftest segment-curve-variants-test
+  (testing "curve=0 (concave) differs from curve=0.5 (linear)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-curved-emit)))))

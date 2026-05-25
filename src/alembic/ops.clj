@@ -91,6 +91,12 @@
    ;; :damping — 3-tap FIR LP; brightness-parameterised; used in Rings KS loop
    ;;   coeff brightness coefficient [0, 1]; 1 = pass-through; 0 = fully damped
    :damping     [:in :coeff]
+   ;; :segment — morphable slope waveshaper (Level 1 phasor-based LFO primitive)
+   ;;   phase [0,1)  from os.phasor; output is [0,1] unipolar
+   ;;   shape [0,1]  rise/fall ratio: 0=falling-saw, 0.5=symmetric triangle, 1=rising-saw
+   ;;   curve [0,1]  curvature: 0=concave/exp-in (x^4), 0.5=linear (x^1), 1=convex/exp-out (x^0.25)
+   ;;   Bipolar: (sub (mul seg 2.0) 1.0) → [-1, 1]
+   :segment     [:phase :shape :curve]
    ;; ---- ops that accept a compile-time options map before signal args ----
    ;; :vco — anti-aliased oscillator
    ;;   opts: {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5  :sync false}
@@ -155,6 +161,7 @@
    :crossover   :sample
    :hysteresis  :sample
    :damping     :sample
+   :segment     :sample
    :vco         :sample
    :counter     :sample
    :table       :sample

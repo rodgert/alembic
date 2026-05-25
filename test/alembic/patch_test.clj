@@ -897,3 +897,34 @@
     (testing ":damping is :sample rate"
       (is (= :sample (:rate node))))))
 
+;; ---------------------------------------------------------------------------
+;; :segment — morphable slope waveshaper
+;; ---------------------------------------------------------------------------
+
+(defpatch! segment-triangle-test {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.5)]
+    (output out)))
+
+(defpatch! segment-audio-shape-test {}
+  (let [ph    (phasor 2.0)
+        shape (sine-uni (phasor 0.1))
+        out   (segment ph shape 0.5)]
+    (output out)))
+
+(deftest segment-node-test
+  (testing "has exactly one :segment node"
+    (is (= 1 (count (nodes-by-op segment-triangle-test :segment)))))
+  (let [node (first (nodes-by-op segment-triangle-test :segment))]
+    (testing ":segment has :phase :shape :curve inlets"
+      (is (= #{:phase :shape :curve} (set (keys (:inputs node))))))
+    (testing ":segment is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest segment-audio-rate-shape-test
+  (testing "shape inlet accepts an audio-rate signal node"
+    (let [node  (first (nodes-by-op segment-audio-shape-test :segment))
+          nodes (:nodes segment-audio-shape-test)
+          shape-id (get-in node [:inputs :shape])]
+      (is (= :sample (:rate (get nodes shape-id)))))))
+
