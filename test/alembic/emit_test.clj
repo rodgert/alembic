@@ -1179,3 +1179,43 @@
     (is (nil? (alembic.compile/validate min-max-emit-patch))))
   (testing "track-hold produces valid Faust"
     (is (nil? (alembic.compile/validate track-hold-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Ears — envelope follower composition: abs + slew + comparator + delta
+;; ---------------------------------------------------------------------------
+
+(defpatch! ears-emit-patch
+  {:params {:gain             {:range [0.0 4.0]   :default 1.0}
+            :attack           {:range [0.001 0.5]  :default 0.01}
+            :release          {:range [0.01 2.0]   :default 0.1}
+            :threshold        {:range [0.0 1.0]    :default 0.3}
+            :hyst-width       {:range [0.0 0.2]    :default 0.05}
+            :transient-thresh {:range [0.0 0.2]    :default 0.02}}}
+  (let [in        (audio-in)
+        gained    (vca in (param :gain))
+        env       (slew (abs gained) (param :attack) (param :release))
+        gate      (hysteresis env (param :threshold) (param :hyst-width))
+        onset-cmp (comparator (delta env) (param :transient-thresh))
+        onset     (:out onset-cmp)]
+    (output env)
+    (output gate)
+    (output onset)))
+
+(deftest ears-emit-test
+  (let [src (emit-faust ears-emit-patch)]
+    (testing "contains abs() for rectification"
+      (is (re-find #"abs\(n\d+\)" src)))
+    (testing "contains slew select2/exp pattern for envelope follower"
+      (is (str/includes? src "select2("))
+      (is (str/includes? src "exp("))
+      (is (str/includes? src "ma.SR")))
+    (testing "contains hysteresis select2/feedback for gate (slew + 2 nested in hysteresis)"
+      (is (= 3 (count (re-seq #"select2\(" src)))))
+    (testing "contains delta (n - n') for onset detection"
+      (is (re-find #"n\d+ - n\d+'" src)))
+    (testing "three process outputs via alembic_dsp"
+      (is (re-find #"alembic_dsp\(n\d+\) = n\d+, n\d+, n\d+" src)))))
+
+(deftest ears-validates-test
+  (testing "full ears envelope follower patch produces valid Faust"
+    (is (nil? (alembic.compile/validate ears-emit-patch)))))
