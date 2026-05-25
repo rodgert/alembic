@@ -143,58 +143,72 @@
    :beat-trigger [:phase]})
 
 (def node-rate
-  "Maps op keyword → rate keyword (:sample | :block | :beat)."
-  {:phasor      :sample
+  "Maps op keyword → rate keyword (:sample | :block | :beat | :polymorphic).
+  :polymorphic ops derive their rate from max(input rates) at walk time.
+  Only stateless pure-function ops are polymorphic; any op that uses a
+  1-sample delay ('operator), IIR state, or sample-indexed memory stays :sample."
+  {;; ---- signal generators — always sample-rate ----
+   :phasor      :sample
    :sine-bi     :sample
    :sine-uni    :sample
    :tri         :sample
    :rect        :sample
-   :mul         :sample
-   :add         :sample
-   :sub         :sample
-   :div         :sample
-   :history     :sample
-   :delay       :sample
-   :sah         :sample
-   :delta       :sample
-   :wrap        :sample
-   :fold        :sample
-   :clip        :sample
-   :smooth      :sample
-   :ar-env      :sample
-   :ladder      :sample
-   :svf         :sample
-   :one-pole    :sample
-   :dc-block    :sample
-   :allpass     :sample
-   :vca         :sample
-   :slew        :sample
-   :sample-hold :sample
-   :comparator  :sample
+   :vco         :sample
    :noise       :sample
    :pink-noise  :sample
-   :crossfade   :sample
-   :ring-mod    :sample
-   :bitcrusher  :sample
-   :soft-clip   :sample
-   :hard-clip   :sample
-   :wave-fold   :sample
+   :audio-in    :sample
+   ;; ---- ops with 1-sample state or IIR feedback — always sample-rate ----
+   :history     :sample   ; uses Faust ' operator
+   :delta       :sample   ; uses '
+   :smooth      :sample   ; si.smooth — IIR pole
+   :slew        :sample   ; ~ _ feedback
+   :hysteresis  :sample   ; ~ _ feedback
+   :damping     :sample   ; 3-tap FIR uses '
+   :beat-trigger :sample  ; (phase' - phase) uses '
+   :sah         :sample   ; ba.sAndH — sample-indexed
+   :sample-hold :sample   ; ba.sAndH
+   :ar-env      :sample   ; envelope state machine
+   :delay       :sample   ; delay line — sample-indexed
+   :allpass     :sample   ; de.apf — delay-based
+   :buffer      :sample   ; rwtable — sample-indexed
+   :counter     :sample   ; edge detection via '
+   ;; ---- filters — always sample-rate ----
+   :ladder      :sample
+   :svf         :sample
    :naive-svf   :sample
    :crossover   :sample
-   :hysteresis  :sample
-   :damping     :sample
-   :segment     :sample
-   :vco         :sample
-   :counter     :sample
-   :table       :sample
-   :select       :sample
-   :buffer       :sample
-   :audio-in     :sample
-   :beat-phase   :beat
-   :beat-bpm     :block
-   :beat-trigger :sample
-   :param        :block
-   :const        :sample})
+   :one-pole    :sample
+   :dc-block    :sample
+   ;; ---- stateless pure-function ops — rate follows max(input rates) ----
+   :mul         :polymorphic
+   :add         :polymorphic
+   :sub         :polymorphic
+   :div         :polymorphic
+   :clip        :polymorphic
+   :wrap        :polymorphic
+   :fold        :polymorphic
+   :vca         :polymorphic
+   :crossfade   :polymorphic
+   :ring-mod    :polymorphic
+   :soft-clip   :polymorphic
+   :hard-clip   :polymorphic
+   :wave-fold   :polymorphic
+   :bitcrusher  :polymorphic
+   :comparator  :polymorphic
+   :segment     :polymorphic
+   :table       :polymorphic
+   :select      :polymorphic
+   ;; ---- beat-domain ----
+   :beat-phase  :beat
+   :beat-bpm    :block
+   ;; ---- parameter and constant nodes ----
+   ;; :param — hslider, updated at block rate by the plugin host.
+   ;; :const — numeric literal; does not vary per-sample, so :block is correct.
+   ;;   Faust auto-promotes consts to sample-rate when combined with sample-rate
+   ;;   signals; using :block here ensures pure-param patches get dominant-rate :block
+   ;;   and route to the nomos-rt modulator compile path rather than CLAP.
+   :param       :block
+   :const       :block})
 
 (def port-node-specs
   "Secondary port nodes created automatically for multi-output ops.

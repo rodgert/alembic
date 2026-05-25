@@ -26,8 +26,8 @@
     (is (= 1 (count (nodes-by-op literal-test :const)))))
   (testing ":const node carries the literal value"
     (is (= 440.0 (:value (first (nodes-by-op literal-test :const))))))
-  (testing ":const node is :sample rate"
-    (is (= :sample (:rate (first (nodes-by-op literal-test :const)))))))
+  (testing ":const node is :block rate"
+    (is (= :block (:rate (first (nodes-by-op literal-test :const)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Param deduplication

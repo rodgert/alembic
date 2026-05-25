@@ -2,45 +2,66 @@
 (ns examples.blades
   "Blades-inspired dual multimode filter.
 
-  Topology: two SVF sections (A and B) with voltage-controlled routing
-  between series and parallel configurations, plus cross-FM from filter A
-  into filter B's cutoff.
+  Signal flow:
+    input → drive/fold → filter A ──────────── crossfade → filter B → level → output
+                             │                     ↑
+                             └── cross-FM ─────────┘ (A's output → B's cutoff)
 
-  Series  (routing=0): input → filter A → filter B → output
-  Parallel (routing=1): input → filter A ─┐
-                        input → filter B ─┴─ mix → output
+  Topology: two ZDF SVF sections (A and B) with voltage-controlled routing
+  between series and parallel configurations, cross-FM from filter A into
+  filter B's cutoff, a pre-filter wavefold drive stage, and an output level VCA.
+
+  Drive: input is scaled by (1 + drive*7) then triangle-folded back to [-1,1].
+    drive=0 → unity gain, clean passthrough.
+    drive=0.14 → 2× gain, gentle second-harmonic character.
+    drive=1.0 → 8× gain, heavy wavefold distortion.
+
+  Routing (series/parallel crossfade):
+    routing=0 → series:   input → A → B → output
+    routing=1 → parallel: input → A ─┐
+                          driven → B ─┴─ mix → output
 
   Cross-FM: filter A's output is scaled by :fm-amt and added to filter B's
-  cutoff, giving classic frequency-shifting / vowel-formant interactions.
+  normalised cutoff [0,1], giving frequency-shifting and vowel-formant
+  interactions.  At fm-amt=0 the filters are independent.
 
-  All cutoff params are normalised [0,1] → [0, Nyquist] by the :svf emit.
+  Cutoff params are normalised [0,1] → [0, Nyquist] by the :svf emit.
   Mode [0,1]: 0=LP, 0.5=BP, 1=HP (continuously variable)."
   (:require [alembic.patch :refer [defpatch!]]))
 
 (defpatch! blades
-  {:params {:freq-a   {:range [0.0 1.0] :default 0.5  :unit :hz}
+  {:params {:drive    {:range [0.0 1.0] :default 0.0}
+            :freq-a   {:range [0.0 1.0] :default 0.5  :unit :hz}
             :res-a    {:range [0.0 1.0] :default 0.0}
             :mode-a   {:range [0.0 1.0] :default 0.0}
             :freq-b   {:range [0.0 1.0] :default 0.5  :unit :hz}
             :res-b    {:range [0.0 1.0] :default 0.0}
             :mode-b   {:range [0.0 1.0] :default 0.0}
             :routing  {:range [0.0 1.0] :default 0.0}
-            :fm-amt   {:range [0.0 1.0] :default 0.0}}}
+            :fm-amt   {:range [0.0 1.0] :default 0.0}
+            :level    {:range [0.0 1.0] :default 1.0}}}
   (let [in      (audio-in)
 
-        ;; Filter A — processes the raw input
-        filt-a  (svf in
+        ;; Drive stage: scale into wavefolder for pre-filter harmonic saturation.
+        ;; drive=0 → scale=1 (signal stays inside fold threshold, clean).
+        ;; drive=1 → scale=8 (heavy triangle-fold distortion).
+        driven  (wave-fold (mul in (add 1.0 (mul (param :drive) 7.0))))
+
+        ;; Filter A — processes the driven signal
+        filt-a  (svf driven
                      (param :freq-a)
                      (param :res-a)
                      (param :mode-a))
 
-        ;; Cross-FM: scale filter A's output, add to filter B's cutoff
-        cutoff-b (add (param :freq-b)
-                      (mul filt-a (param :fm-amt)))
+        ;; Cross-FM: scale filter A's output, add to filter B's cutoff.
+        ;; Clipped to [0,1] so B's cutoff stays in the normalised range.
+        cutoff-b (clip (add (param :freq-b)
+                            (mul filt-a (param :fm-amt)))
+                       0.0 1.0)
 
-        ;; Filter B input: crossfade between raw input (parallel) and
-        ;; filter A output (series). routing=0 → series, routing=1 → parallel.
-        b-input (crossfade filt-a in (param :routing))
+        ;; Filter B input: series (routing=0) uses filter A output;
+        ;; parallel (routing=1) uses the driven input directly.
+        b-input (crossfade filt-a driven (param :routing))
 
         ;; Filter B
         filt-b  (svf b-input
@@ -48,4 +69,5 @@
                      (param :res-b)
                      (param :mode-b))]
 
-    (output filt-b)))
+    ;; Output VCA — master level control
+    (output (vca filt-b (param :level)))))

@@ -42,7 +42,7 @@
   (cond
     (number? expr)
     (let [id   (next-id! counter)
-          node {:id id :op :const :value expr :rate :sample}]
+          node {:id id :op :const :value expr :rate (ops/node-rate :const)}]
       (swap! nodes assoc id node)
       id)
 
@@ -118,8 +118,16 @@
                                           {:op op :expected (count inlets) :got (count sig-args)})))
               srcs      (mapv #(walk-expr % state) sig-args)
               id        (next-id! counter)
-              rate      (or (get ops/node-rate op-kw)
+              rate-spec (or (get ops/node-rate op-kw)
                             (throw (ex-info (str "No rate entry for op: " op-kw) {:op op-kw})))
+              rate      (if (= :polymorphic rate-spec)
+                          ;; Derive rate from max(input rates); default :block when no inputs.
+                          (let [rank        {:beat 0 :block 1 :sample 2}
+                                input-rates (map #(:rate (get @nodes %)) srcs)]
+                            (if (seq input-rates)
+                              (->> input-rates (sort-by rank) last)
+                              :block))
+                          rate-spec)
               inputs    (zipmap inlets srcs)
               node      (cond-> {:id id :op op-kw :rate rate :inputs inputs}
                           (seq opts) (assoc :opts opts))]
