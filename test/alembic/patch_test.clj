@@ -750,3 +750,105 @@
           false
           (catch Exception e (cause-msg-matches? e #"Unknown port"))))))
 
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :naive-svf (multi-output)
+;; ---------------------------------------------------------------------------
+
+(defpatch! naive-svf-test {}
+  (let [ph (phasor 440.0)
+        f  (naive-svf ph 0.3 0.5)
+        lp (:out f)
+        hp (:hp f)]
+    (output lp)
+    (output hp)))
+
+(deftest naive-svf-node-test
+  (testing "creates primary :naive-svf node"
+    (is (= 1 (count (nodes-by-op naive-svf-test :naive-svf)))))
+  (testing "creates secondary :naive-svf-hp node"
+    (is (= 1 (count (nodes-by-op naive-svf-test :naive-svf-hp)))))
+  (let [node (first (nodes-by-op naive-svf-test :naive-svf))]
+    (testing ":naive-svf has :in :cutoff :resonance inlets"
+      (is (= #{:in :cutoff :resonance} (set (keys (:inputs node))))))
+    (testing ":naive-svf is :sample rate"
+      (is (= :sample (:rate node)))))
+  (let [hp-node (first (nodes-by-op naive-svf-test :naive-svf-hp))
+        lp-node (first (nodes-by-op naive-svf-test :naive-svf))]
+    (testing ":naive-svf-hp :in matches primary :in"
+      (is (= (get-in lp-node [:inputs :in])
+             (get-in hp-node [:inputs :in]))))
+    (testing ":naive-svf-hp :cutoff matches primary :cutoff"
+      (is (= (get-in lp-node [:inputs :cutoff])
+             (get-in hp-node [:inputs :cutoff])))))
+  (testing "both ports appear in patch outputs"
+    (is (= 2 (count (:outputs naive-svf-test))))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :crossover (multi-output)
+;; ---------------------------------------------------------------------------
+
+(defpatch! crossover-test {}
+  (let [ph (phasor 440.0)
+        xo (crossover ph 0.3)
+        lp (:out xo)
+        hp (:hp xo)]
+    (output lp)
+    (output hp)))
+
+(deftest crossover-node-test
+  (testing "creates primary :crossover node"
+    (is (= 1 (count (nodes-by-op crossover-test :crossover)))))
+  (testing "creates secondary :crossover-hp node"
+    (is (= 1 (count (nodes-by-op crossover-test :crossover-hp)))))
+  (let [node (first (nodes-by-op crossover-test :crossover))]
+    (testing ":crossover has :in :cutoff inlets"
+      (is (= #{:in :cutoff} (set (keys (:inputs node))))))
+    (testing ":crossover is :sample rate"
+      (is (= :sample (:rate node)))))
+  (let [hp-node (first (nodes-by-op crossover-test :crossover-hp))
+        lp-node (first (nodes-by-op crossover-test :crossover))]
+    (testing ":crossover-hp :in matches primary :in"
+      (is (= (get-in lp-node [:inputs :in])
+             (get-in hp-node [:inputs :in]))))
+    (testing ":crossover-hp :cutoff matches primary :cutoff"
+      (is (= (get-in lp-node [:inputs :cutoff])
+             (get-in hp-node [:inputs :cutoff])))))
+  (testing "both ports appear in patch outputs"
+    (is (= 2 (count (:outputs crossover-test))))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :hysteresis
+;; ---------------------------------------------------------------------------
+
+(defpatch! hysteresis-test {}
+  (let [ph (phasor 440.0)
+        hy (hysteresis ph 0.5 0.1)]
+    (output hy)))
+
+(deftest hysteresis-node-test
+  (testing "has exactly one :hysteresis node"
+    (is (= 1 (count (nodes-by-op hysteresis-test :hysteresis)))))
+  (let [node (first (nodes-by-op hysteresis-test :hysteresis))]
+    (testing ":hysteresis has :in :threshold :width inlets"
+      (is (= #{:in :threshold :width} (set (keys (:inputs node))))))
+    (testing ":hysteresis is :sample rate"
+      (is (= :sample (:rate node))))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :damping
+;; ---------------------------------------------------------------------------
+
+(defpatch! damping-test {}
+  (let [ph (phasor 440.0)
+        d  (damping ph 0.9)]
+    (output d)))
+
+(deftest damping-node-test
+  (testing "has exactly one :damping node"
+    (is (= 1 (count (nodes-by-op damping-test :damping)))))
+  (let [node (first (nodes-by-op damping-test :damping))]
+    (testing ":damping has :in :coeff inlets"
+      (is (= #{:in :coeff} (set (keys (:inputs node))))))
+    (testing ":damping is :sample rate"
+      (is (= :sample (:rate node))))))
+

@@ -67,6 +67,22 @@
    :hard-clip   [:in]
    ;; :wave-fold — triangle wavefolder; folds input > 1 or < −1 back into [−1, 1]
    :wave-fold   [:in]
+   ;; :naive-svf — Chamberlin SVF; LP+HP simultaneous; cutoff capped at Nyquist/6
+   ;;   cutoff    normalised [0, 1]; stability limit enforced at emit time
+   ;;   resonance normalised [0, 1]
+   ;;   Returns multi-output port-map: {:out lp-id :hp hp-id}
+   :naive-svf   [:in :cutoff :resonance]
+   ;; :crossover — 4th-order Linkwitz-Riley; LP+HP sum = flat amplitude response
+   ;;   cutoff    normalised [0, 1]
+   ;;   Returns multi-output port-map: {:out lp-id :hp hp-id}
+   :crossover   [:in :cutoff]
+   ;; :hysteresis — Schmitt trigger with deadband; suppresses CV jitter without lag
+   ;;   threshold  detection level; output goes high when :in crosses above
+   ;;   width      dead-band below threshold; output clears only when in < threshold-width
+   :hysteresis  [:in :threshold :width]
+   ;; :damping — 3-tap FIR LP; brightness-parameterised; used in Rings KS loop
+   ;;   coeff brightness coefficient [0, 1]; 1 = pass-through; 0 = fully damped
+   :damping     [:in :coeff]
    ;; ---- ops that accept a compile-time options map before signal args ----
    ;; :vco — anti-aliased oscillator
    ;;   opts: {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5  :sync false}
@@ -127,6 +143,10 @@
    :soft-clip   :sample
    :hard-clip   :sample
    :wave-fold   :sample
+   :naive-svf   :sample
+   :crossover   :sample
+   :hysteresis  :sample
+   :damping     :sample
    :vco         :sample
    :counter     :sample
    :table       :sample
@@ -140,5 +160,7 @@
   Maps op-kw → {port-name {:op port-op-kw :inlets [inlet-kws]}}.
   :source always refers to the primary node id; other inlet names are
   resolved from the primary node's own inputs map by the same key."
-  {:counter    {:carry    {:op :counter-carry  :inlets [:source :clock]}}
-   :comparator {:inv-gate {:op :comparator-inv :inlets [:source]}}})
+  {:counter    {:carry    {:op :counter-carry   :inlets [:source :clock]}}
+   :comparator {:inv-gate {:op :comparator-inv  :inlets [:source]}}
+   :naive-svf  {:hp       {:op :naive-svf-hp    :inlets [:in :cutoff :resonance]}}
+   :crossover  {:hp       {:op :crossover-hp    :inlets [:in :cutoff]}}})
