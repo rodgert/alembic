@@ -1147,3 +1147,27 @@
           th-node   (first (nodes-by-op track-hold-patch :track-hold))]
       (is (some #(= (:id th-node) (:to %)) crossings)))))
 
+;; ---------------------------------------------------------------------------
+;; :sqrt — square root, polymorphic rate
+;; ---------------------------------------------------------------------------
+
+(defpatch! sqrt-audio-patch {}
+  (let [in  (audio-in)
+        out (sqrt (abs in))]
+    (output out)))
+
+(defpatch! sqrt-cv-patch {}
+  (let [out (sqrt (param :x))]
+    (output out)))
+
+(deftest sqrt-node-test
+  (testing "sqrt of audio signal is :sample rate (polymorphic follows input)"
+    (let [node (first (nodes-by-op sqrt-audio-patch :sqrt))]
+      (is (= :sample (:rate node)))))
+  (testing "sqrt of param is :block rate"
+    (let [node (first (nodes-by-op sqrt-cv-patch :sqrt))]
+      (is (= :block (:rate node)))))
+  (testing ":sqrt has :in inlet"
+    (let [node (first (nodes-by-op sqrt-audio-patch :sqrt))]
+      (is (contains? (:inputs node) :in)))))
+

@@ -77,6 +77,10 @@
    :wave-fold   [:in]
    ;; :abs — absolute value; full-wave rectify; rate follows input
    :abs         [:in]
+   ;; :sqrt — square root; rate follows input; undefined for negative values
+   ;;   Use for: RMS envelope (sqrt(slew(mul x x))), equal-power crossfade,
+   ;;            octave-to-Hz (mul 440.0 (pow 2.0 (sub cv 69.0/12.0))).
+   :sqrt        [:in]
    ;; :min — signal minimum of two inputs; AND gate on boolean signals
    :min         [:a :b]
    ;; :max — signal maximum of two inputs; OR gate on boolean signals
@@ -186,6 +190,8 @@
    ;; ---- utility ops — stateless, rate-polymorphic ----
    ;; :abs — absolute value; full-wave rectify when applied to audio
    :abs         :polymorphic
+   ;; :sqrt — square root; undefined for negative inputs (no guarding applied)
+   :sqrt        :polymorphic
    ;; :min — signal minimum; acts as AND gate on boolean (gate) signals
    :min         :polymorphic
    ;; :max — signal maximum; acts as OR gate on boolean signals;

@@ -317,6 +317,7 @@
       :comparator-inv (format "(1.0 - %s)" (i :source))
       ;; Utility ops — stateless, rate-polymorphic
       :abs         (format "abs(%s)" (i :in))
+      :sqrt        (format "sqrt(%s)" (i :in))
       ;; min/max: signal minimum / maximum; AND / OR gate on boolean signals
       :min         (format "min(%s, %s)" (i :a) (i :b))
       :max         (format "max(%s, %s)" (i :a) (i :b))
@@ -355,6 +356,27 @@
                       {:node node})))))
 
 ;; ---------------------------------------------------------------------------
+;; Reachability pass — prune unreferenced secondary port nodes
+;; ---------------------------------------------------------------------------
+
+(defn- reachable-from
+  "Return the set of node ids backward-reachable from root-ids through edges.
+  Feedback edges are included so that stateful cycles are not accidentally pruned."
+  [root-ids edges]
+  (let [preds (reduce (fn [acc {:keys [from to]}]
+                        (update acc to (fnil conj #{}) from))
+                      {}
+                      edges)]
+    (loop [visited (set root-ids)
+           queue   (vec root-ids)]
+      (if (empty? queue)
+        visited
+        (let [id    (peek queue)
+              new-p (remove visited (get preds id #{}))]
+          (recur (into visited new-p)
+                 (into (pop queue) new-p)))))))
+
+;; ---------------------------------------------------------------------------
 ;; Top-level emitter
 ;; ---------------------------------------------------------------------------
 
@@ -374,7 +396,9 @@
   [{:keys [nodes edges params outputs] :as _graph}]
   (when (empty? outputs)
     (throw (ex-info "Cannot emit Faust: patch has no outputs" {})))
-  (let [order     (topo-sort nodes edges)
+  (let [reachable (reachable-from (mapv :node outputs) edges)
+        nodes     (select-keys nodes reachable)
+        order     (topo-sort nodes edges)
         audio-ins (->> order
                        (filter #(= :audio-in (:op (get nodes %))))
                        (mapv node-ident))

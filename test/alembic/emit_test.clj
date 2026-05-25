@@ -1263,3 +1263,42 @@
 (deftest ripples-validates-test
   (testing "ripples patch produces valid Faust"
     (is (nil? (alembic.compile/validate ripples-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; :sqrt — square root op
+;; ---------------------------------------------------------------------------
+
+(defpatch! sqrt-emit-patch {}
+  (let [in  (audio-in)
+        out (sqrt (abs in))]
+    (output out)))
+
+(deftest sqrt-emit-test
+  (let [src (emit-faust sqrt-emit-patch)]
+    (testing "sqrt emits Faust sqrt()"
+      (is (str/includes? src "sqrt(")))
+    (testing "abs feeds into sqrt"
+      (is (re-find #"sqrt\(n\d+\)" src)))
+    (testing "abs is also present"
+      (is (str/includes? src "abs(")))))
+
+(deftest sqrt-validates-test
+  (testing "sqrt patch produces valid Faust"
+    (is (nil? (alembic.compile/validate sqrt-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Dead secondary port pruning
+;; ---------------------------------------------------------------------------
+
+(defpatch! comparator-pruned-patch {}
+  (let [in    (audio-in)
+        cmp   (comparator in 0.0)
+        gate  (:out cmp)]
+    (output gate)))
+
+(deftest dead-secondary-port-pruned-test
+  (let [src (emit-faust comparator-pruned-patch)]
+    (testing "primary comparator output is present"
+      (is (str/includes? src "float(")))
+    (testing "unused comparator-inv secondary port is pruned from emitted Faust"
+      (is (not (re-find #"1\.0 - n\d+" src))))))
