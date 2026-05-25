@@ -778,3 +778,93 @@
       (let [lines (str/split-lines src)
             idx   (fn [re] (first (keep-indexed #(when (re-find re %2) %1) lines)))]
         (is (< (idx #"float\(n\d+ > n\d+\)") (idx #"1\.0 - n\d+")))))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :naive-svf emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! naive-svf-emit-patch {}
+  (let [ph (phasor 440.0)
+        f  (naive-svf ph 0.3 0.5)
+        lp (:out f)
+        hp (:hp f)]
+    (output lp)
+    (output hp)))
+
+(deftest naive-svf-emit-test
+  (let [src (emit-faust naive-svf-emit-patch)]
+    (testing "emits fi.svf_morph for both LP and HP"
+      (is (= 2 (count (re-seq #"fi\.svf_morph" src)))))
+    (testing "LP uses blend 0.0"
+      (is (str/includes? src ", 0.0, ")))
+    (testing "HP uses blend 2.0"
+      (is (str/includes? src ", 2.0, ")))
+    (testing "cutoff capped at ma.SR / 6.0"
+      (is (str/includes? src "ma.SR / 6.0")))
+    (testing "two process outputs"
+      (is (re-find #"process = n\d+, n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :crossover emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! crossover-emit-patch {}
+  (let [ph (phasor 440.0)
+        xo (crossover ph 0.3)
+        lp (:out xo)
+        hp (:hp xo)]
+    (output lp)
+    (output hp)))
+
+(deftest crossover-emit-test
+  (let [src (emit-faust crossover-emit-patch)]
+    (testing "LP emits fi.lowpass"
+      (is (str/includes? src "fi.lowpass(")))
+    (testing "HP emits fi.highpass"
+      (is (str/includes? src "fi.highpass(")))
+    (testing "two cascaded LP sections for LR4"
+      (is (= 2 (count (re-seq #"fi\.lowpass" src)))))
+    (testing "two cascaded HP sections for LR4"
+      (is (= 2 (count (re-seq #"fi\.highpass" src)))))
+    (testing "two process outputs"
+      (is (re-find #"process = n\d+, n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :hysteresis emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! hysteresis-emit-patch {}
+  (let [ph (phasor 440.0)
+        hy (hysteresis ph 0.5 0.1)]
+    (output hy)))
+
+(deftest hysteresis-emit-test
+  (let [src (emit-faust hysteresis-emit-patch)]
+    (testing "emits select2 for threshold comparison"
+      (is (str/includes? src "select2(")))
+    (testing "uses 1-sample feedback state"
+      (is (str/includes? src "~ _")))
+    (testing "outer select tests in > threshold"
+      (is (re-find #"select2\(n\d+ > n\d+" src)))
+    (testing "inner select tests in < threshold - width"
+      (is (re-find #"select2\(n\d+ < \(n\d+ - n\d+\)" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 gap ops — :damping emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! damping-emit-patch {}
+  (let [ph (phasor 440.0)
+        d  (damping ph 0.9)]
+    (output d)))
+
+(deftest damping-emit-test
+  (let [src (emit-faust damping-emit-patch)]
+    (testing "emits 1-sample delayed term (FIR tap 1)"
+      (is (re-find #"n\d+'" src)))
+    (testing "emits 2-sample delayed term (FIR tap 2)"
+      (is (re-find #"n\d+''" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))

@@ -176,6 +176,30 @@
       ;; Uses positive-modulo formula: floor handles negatives correctly in Faust
       :wave-fold   (format "(1.0 - 2.0 * abs((%s + 1.0 - 4.0 * floor((%s + 1.0) / 4.0)) / 2.0 - 1.0))"
                            (i :in) (i :in))
+      ;; :naive-svf — Chamberlin-style SVF; LP output; cutoff capped at Nyquist/6 for stability
+      ;; fi.svf_morph(freq_hz, Q, blend=0.0, x) → pure LP
+      :naive-svf   (format "fi.svf_morph(min(%s * ma.SR * 0.5, ma.SR / 6.0), (0.5 + %s * 9.5), 0.0, %s)"
+                           (i :cutoff) (i :resonance) (i :in))
+      ;; :naive-svf-hp — HP companion port; same params, blend=2.0 → pure HP
+      :naive-svf-hp (format "fi.svf_morph(min(%s * ma.SR * 0.5, ma.SR / 6.0), (0.5 + %s * 9.5), 2.0, %s)"
+                            (i :cutoff) (i :resonance) (i :in))
+      ;; :crossover — Linkwitz-Riley 4th order LP; two cascaded 2nd-order Butterworth LP sections
+      ;; LP+HP sum = flat amplitude; cutoff [0,1] → Hz
+      :crossover   (format "(%s : fi.lowpass(2, %s * ma.SR * 0.5) : fi.lowpass(2, %s * ma.SR * 0.5))"
+                           (i :in) (i :cutoff) (i :cutoff))
+      ;; :crossover-hp — HP companion port; two cascaded 2nd-order Butterworth HP sections
+      :crossover-hp (format "(%s : fi.highpass(2, %s * ma.SR * 0.5) : fi.highpass(2, %s * ma.SR * 0.5))"
+                            (i :in) (i :cutoff) (i :cutoff))
+      ;; :hysteresis — Schmitt trigger with deadband; 1-sample feedback state
+      ;; in > threshold → 1.0; in < (threshold - width) → 0.0; else hold
+      :hysteresis  (format "(select2(%s > %s, select2(%s < (%s - %s), _, 0.0), 1.0) ~ _)"
+                           (i :in) (i :threshold) (i :in) (i :threshold) (i :width))
+      ;; :damping — 3-tap FIR LP: (in + coeff*in' + coeff²*in'')
+      ;; brightness-parameterised: coeff ≈ 1 = bright, coeff ≈ 0 = dark
+      :damping     (let [in (i :in)
+                         c  (i :coeff)]
+                     (format "(%s + %s * %s' + %s * %s * %s'')"
+                             in c in c c in))
       ;; ---- ops that use compile-time :opts ----
       ;; :vco — oscillator shape selected at compile time from {:shape kw}
       ;; Uses Faust oscillators.lib bandlimited waveforms.
