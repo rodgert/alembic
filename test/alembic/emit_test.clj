@@ -4,7 +4,8 @@
             [clojure.string :as str]
             [alembic.emit :refer [emit-faust]]
             [alembic.compile]
-            [alembic.patch :refer [defpatch!]]))
+            [alembic.patch :refer [defpatch!]]
+            [examples.ks-string]))
 
 ;; ---------------------------------------------------------------------------
 ;; Smoke — minimal patch
@@ -1302,3 +1303,26 @@
       (is (str/includes? src "float(")))
     (testing "unused comparator-inv secondary port is pruned from emitted Faust"
       (is (not (re-find #"1\.0 - n\d+" src))))))
+
+;; ---------------------------------------------------------------------------
+;; ks-string — KS loop Faust emit
+;; ---------------------------------------------------------------------------
+
+(deftest ks-string-emit-test
+  (let [src (emit-faust examples.ks-string/ks-string)]
+    (testing "de.delay present (pitch-setting delay line)"
+      (is (str/includes? src "de.delay(")))
+    (testing "@(1) present (1-sample lag in averaging FIR)"
+      (is (str/includes? src "@(1)")))
+    (testing "~ _ present (Faust feedback combinator)"
+      (is (str/includes? src "~ _")))
+    (testing "exciter: no.noise present"
+      (is (str/includes? src "no.noise")))
+    (testing "exciter: en.ar present"
+      (is (str/includes? src "en.ar(")))
+    (testing "fan-out/fan-in damping pattern present"
+      (is (str/includes? src "<:")))))
+
+(deftest ks-string-validates-test
+  (testing "ks-string patch produces valid Faust"
+    (is (nil? (alembic.compile/validate examples.ks-string/ks-string)))))
