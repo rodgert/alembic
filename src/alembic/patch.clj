@@ -2,6 +2,32 @@
 (ns alembic.patch
   (:require [alembic.ops :as ops]))
 
+;; ---------------------------------------------------------------------------
+;; Named output semantics
+;;
+;; (output :cv expr)    → channel 0   modulator_output.cv
+;; (output :aux expr)   → channel 1   modulator_output.aux
+;; (output :gate expr)  → channel 2   modulator_output.gate  (float > 0.5 → true)
+;; (output :gate2 expr) → channel 3   modulator_output.gate2
+;; (output :out0 expr)  → channel 4
+;; (output :out1 expr)  → channel 5   (etc.)
+;;
+;; Unnamed (output expr) assigns channels sequentially from 0 as before.
+;; The reserved param name "beat" is auto-populated at block rate by the
+;; faust_modulator runtime with the fractional beat phase ∈ [0, 1).
+;; ---------------------------------------------------------------------------
+
+(def ^:private semantic-channels
+  {:cv 0 :aux 1 :gate 2 :gate2 3})
+
+(defn- semantic->channel [k]
+  (or (get semantic-channels k)
+      (when-let [[_ n] (re-matches #"out(\d+)" (name k))]
+        (+ 4 (Long/parseLong n)))
+      (throw (ex-info (str "Unknown output semantic: " k
+                           " — use :cv :aux :gate :gate2 :out0 :out1 ...")
+                      {:semantic k}))))
+
 (defn- next-id! [counter]
   (keyword (str "n" (let [n @counter]
                       (swap! counter inc)
@@ -41,21 +67,28 @@
         (throw (ex-info "output must not be nested — use at top level of the patch body" {}))
 
         :else
-        (let [op-kw  (keyword (name op))
-              inlets (or (get ops/inlet-names op-kw)
-                         (throw (ex-info (str "Unknown op: " op
-                                              " — add an entry to alembic.ops/inlet-names")
-                                         {:op op-kw})))
-              _      (when (not= (count inlets) (count args))
-                       (throw (ex-info (str op " expects " (count inlets)
-                                            " arg(s), got " (count args))
-                                       {:op op :expected (count inlets) :got (count args)})))
-              srcs   (mapv #(walk-expr % state) args)
-              id     (next-id! counter)
-              rate   (or (get ops/node-rate op-kw)
-                         (throw (ex-info (str "No rate entry for op: " op-kw) {:op op-kw})))
-              inputs (zipmap inlets srcs)
-              node   {:id id :op op-kw :rate rate :inputs inputs}]
+        (let [op-kw     (keyword (name op))
+              ;; Optional compile-time options map as first argument:
+              ;;   (vco {:shape :saw} freq-signal)
+              has-opts? (and (seq args) (map? (first args)))
+              opts      (if has-opts? (first args) {})
+              sig-args  (if has-opts? (rest args) args)
+              inlets-spec (or (get ops/inlet-names op-kw)
+                              (throw (ex-info (str "Unknown op: " op
+                                                   " — add an entry to alembic.ops/inlet-names")
+                                              {:op op-kw})))
+              inlets    (if (fn? inlets-spec) (inlets-spec opts) inlets-spec)
+              _         (when (not= (count inlets) (count sig-args))
+                          (throw (ex-info (str op " expects " (count inlets)
+                                              " arg(s), got " (count sig-args))
+                                          {:op op :expected (count inlets) :got (count sig-args)})))
+              srcs      (mapv #(walk-expr % state) sig-args)
+              id        (next-id! counter)
+              rate      (or (get ops/node-rate op-kw)
+                            (throw (ex-info (str "No rate entry for op: " op-kw) {:op op-kw})))
+              inputs    (zipmap inlets srcs)
+              node      (cond-> {:id id :op op-kw :rate rate :inputs inputs}
+                          (seq opts) (assoc :opts opts))]
           (swap! nodes assoc id node)
           (doseq [[inlet src-id] (map vector inlets srcs)]
             (let [src-rate  (:rate (get @nodes src-id))
@@ -77,10 +110,18 @@
 (defn- process-body! [body-forms state outputs channel-counter]
   (doseq [form body-forms]
     (if (and (seq? form) (= (first form) 'output))
-      (let [src-id (walk-expr (second form) state)
-            ch     @channel-counter]
-        (swap! channel-counter inc)
-        (swap! outputs conj {:node src-id :channel ch :name "Main"}))
+      (let [named?  (keyword? (second form))
+            sem     (when named? (second form))
+            expr    (if named? (nth form 2) (second form))
+            src-id  (walk-expr expr state)
+            ch      (if named?
+                      (semantic->channel sem)
+                      (let [n @channel-counter]
+                        (swap! channel-counter inc)
+                        n))]
+        (swap! outputs conj (cond-> {:node src-id :channel ch
+                                     :name (if named? (name sem) "Main")}
+                              named? (assoc :semantic sem))))
       (walk-expr form state))))
 
 (defn- dominant-rate [nodes]
@@ -99,10 +140,26 @@
 
   Op names in the authoring form: phasor, sine-bi, sine-uni, tri, rect,
   mul, add, sub, div, history, delay, sah, delta, wrap, fold, clip, smooth,
-  ar-env. Use (param kw) for block-rate plugin parameters.
+  ar-env, ladder, svf, one-pole, dc-block, allpass, vca, slew, sample-hold,
+  comparator, noise, pink-noise, crossfade, ring-mod, bitcrusher, soft-clip,
+  hard-clip, wave-fold. Use (param kw) for block-rate plugin parameters.
 
-  Each body form should be (output expr). Multiple output calls produce
-  multi-channel outputs (channel 0, 1, ...).
+  Ops that accept compile-time options as a map before signal arguments:
+    (vco {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5} freq)
+    (counter {:max 16 :dir :up|:down :wrap true|false} clock reset)
+    (table {:data [floats] :size N :mode :wrap|:clamp|:fold} index)
+
+  Output forms:
+    (output expr)         — unnamed, assigned channel 0, 1, 2 … in declaration order
+    (output :cv   expr)   — channel 0 → modulator_output.cv
+    (output :aux  expr)   — channel 1 → modulator_output.aux
+    (output :gate expr)   — channel 2 → modulator_output.gate (float > 0.5)
+    (output :gate2 expr)  — channel 3 → modulator_output.gate2
+    (output :out0 expr)   — channel 4 (extra outputs)
+    (output :outN expr)   — channel 4+N
+
+  When compiled as a faust_modulator (375 Hz), the reserved param name
+  \"beat\" is auto-populated with the fractional beat phase ∈ [0, 1).
 
   opts must be a literal map. To construct a graph at runtime, build the
   normalised map directly — it is a plain Clojure value."

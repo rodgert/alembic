@@ -8,8 +8,13 @@
   (check-faust!)                     — verify faust installation
   (validate graph)                   — confirm DSP source compiles
   (compile-to-cpp graph)             — Faust C++ source string (generic)
+  (compile-to-wasm graph & opts)     — compile to .wasm + companion .json
   (compile-to-clap graph & opts)     — compile to native .clap bundle
   (faust-source graph)               — emitted .dsp source (no compiler)
+
+  compile-to-wasm options:
+    :name        base filename for .wasm/.json output (default: \"alembic-patch\")
+    :out-dir     output directory (default: system temp dir)
 
   compile-to-clap options:
     :name        plugin name used for the cmake target and bundle (default: \"alembic-patch\")
@@ -121,6 +126,34 @@
             (throw (ex-info "Faust compilation failed"
                             {:errors err :source src})))))
       (finally (.delete out-f)))))
+
+;; ---------------------------------------------------------------------------
+;; WASM compilation
+;; ---------------------------------------------------------------------------
+
+(defn compile-to-wasm
+  "Compile `graph` to a Faust WASM module (.wasm + companion .json metadata).
+
+  Faust automatically generates a <name>.json alongside the .wasm; both share
+  the same directory and stem. The JSON encodes parameter metadata consumed by
+  the kairos WASM bridge (CLAP_EXT_PARAMS, setParamValue addresses).
+
+  Returns the absolute path to the .wasm file on success.
+  Throws ex-info with :errors and :source on compilation failure."
+  [graph & {:keys [name out-dir]
+            :or   {name "alembic-patch"}}]
+  (let [src    (emit-faust graph)
+        stem   (str/replace name #"[^a-zA-Z0-9\-_]" "-")
+        dir    (or out-dir (System/getProperty "java.io.tmpdir"))
+        wasm-f (io/file dir (str stem ".wasm"))]
+    (with-dsp-file [in-f src]
+      (let [{:keys [exit err]} (sh "faust" "-lang" "wasm"
+                                   (.getAbsolutePath in-f)
+                                   "-o" (.getAbsolutePath wasm-f))]
+        (when (not= 0 exit)
+          (throw (ex-info "Faust WASM compilation failed"
+                          {:errors err :source src})))
+        (.getAbsolutePath wasm-f)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Native CLAP compilation
