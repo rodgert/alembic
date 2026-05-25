@@ -118,7 +118,23 @@
    :select      (fn [{:keys [n] :or {n 2}}]
                   (when (< n 2)
                     (throw (ex-info ":select :n must be >= 2" {:n n})))
-                  (into (mapv #(keyword (str "in-" %)) (range n)) [:index]))})
+                  (into (mapv #(keyword (str "in-" %)) (range n)) [:index]))
+   ;; ---- beat-domain ops ----
+   ;; :beat-phase — host fractional beat position [0,1); rate :beat
+   ;;   No inlets — populated by faust_modulator via reserved hslider("beat").
+   ;;   Semantically coarser than :block; use to drive beat-sync modulators.
+   ;;   Use (beat-trigger (beat-phase)) to obtain a sample-rate trigger at each boundary.
+   :beat-phase  []
+   ;; :beat-bpm — host tempo in BPM; rate :block (host updates at block rate)
+   ;;   No inlets — populated by faust_modulator via reserved hslider("bpm").
+   ;;   Convert to beat period: (div 60.0 (beat-bpm))
+   ;;   Convert to Hz:          (div (beat-bpm) 60.0)
+   :beat-bpm    []
+   ;; :beat-trigger — 1-sample pulse on phase wrap (beat boundary); rate :sample
+   ;;   phase — [0,1) phase signal, typically from :beat-phase
+   ;;   Detects the discrete backward jump (phase' - phase) > 0.5 that occurs when
+   ;;   the sawtooth wraps from ~1 → 0. Use as a clock input to :counter or :sah.
+   :beat-trigger [:phase]})
 
 (def node-rate
   "Maps op keyword → rate keyword (:sample | :block | :beat)."
@@ -165,10 +181,13 @@
    :vco         :sample
    :counter     :sample
    :table       :sample
-   :select      :sample
-   :buffer      :sample
-   :param       :block
-   :const       :sample})
+   :select       :sample
+   :buffer       :sample
+   :beat-phase   :beat
+   :beat-bpm     :block
+   :beat-trigger :sample
+   :param        :block
+   :const        :sample})
 
 (def port-node-specs
   "Secondary port nodes created automatically for multi-output ops.

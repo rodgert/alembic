@@ -202,6 +202,13 @@
   hard-clip, wave-fold, naive-svf, crossover, hysteresis, damping, segment.
   Use (param kw) for block-rate plugin parameters.
 
+  Beat-domain ops (musical time sync):
+    (beat-phase)          → host beat phase [0,1); rate :beat
+    (beat-bpm)            → host tempo in BPM; rate :block
+    (beat-trigger phase)  → 1-sample pulse at each beat boundary; rate :sample
+  Typical usage: (beat-trigger (beat-phase)) as a clock for :counter or :sah.
+  Convert BPM to period: (div 60.0 (beat-bpm))
+
   Multi-output ops return a port-map; select outputs with (:port-name sym):
     (naive-svf in cutoff res) → {:out lp-node :hp hp-node}
     (crossover in cutoff)     → {:out lp-node :hp hp-node}

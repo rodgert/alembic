@@ -1024,3 +1024,64 @@
       (is (not (str/includes? src "%in"))))
     (testing "resulting expression has two node refs"
       (is (re-find #"\(n\d+ \+ n\d+ \* 0\.5\)" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Beat-domain — :beat-phase :beat-bpm :beat-trigger emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! beat-phase-emit-patch {}
+  (let [ph  (beat-phase)
+        out (sine-bi ph)]
+    (output out)))
+
+(deftest beat-phase-emit-test
+  (let [src (emit-faust beat-phase-emit-patch)]
+    (testing "emits hslider with reserved \"beat\" label"
+      (is (str/includes? src "hslider(\"beat\",")))
+    (testing "range is [0.0, 1.0]"
+      (is (str/includes? src "0.0, 0.0, 1.0,")))
+    (testing "beat node defined before sine (topo order)"
+      (let [lines (str/split-lines src)
+            idx   (fn [re] (first (keep-indexed #(when (re-find re %2) %1) lines)))]
+        (is (< (idx #"hslider.*beat") (idx #"sin\(")))))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! beat-bpm-emit-patch {}
+  (let [bpm (beat-bpm)
+        hz  (div bpm 60.0)
+        out (phasor hz)]
+    (output out)))
+
+(deftest beat-bpm-emit-test
+  (let [src (emit-faust beat-bpm-emit-patch)]
+    (testing "emits hslider with reserved \"bpm\" label"
+      (is (str/includes? src "hslider(\"bpm\",")))
+    (testing "default value is 120.0"
+      (is (str/includes? src "120.0")))
+    (testing "range is [20.0, 300.0]"
+      (is (str/includes? src "20.0"))
+      (is (str/includes? src "300.0")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! beat-trigger-emit-patch {}
+  (let [ph   (beat-phase)
+        trig (beat-trigger ph)
+        out  (vca trig 0.5)]
+    (output out)))
+
+(deftest beat-trigger-emit-test
+  (let [src (emit-faust beat-trigger-emit-patch)]
+    (testing "emits float() predicate"
+      (is (re-find #"float\(" src)))
+    (testing "uses 1-sample delay operator"
+      (is (re-find #"n\d+'" src)))
+    (testing "detects backward phase jump via > 0.5"
+      (is (str/includes? src "> 0.5")))
+    (testing "beat-phase node defined before beat-trigger (topo order)"
+      (let [lines (str/split-lines src)
+            idx   (fn [re] (first (keep-indexed #(when (re-find re %2) %1) lines)))]
+        (is (< (idx #"hslider.*beat") (idx #"float\(")))))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))

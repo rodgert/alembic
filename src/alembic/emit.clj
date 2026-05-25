@@ -314,6 +314,20 @@
             (format "float((%s == %s) & %s)" src wrap-target edge))))
       ;; Secondary port of :comparator — logical inverse of the primary gate
       :comparator-inv (format "(1.0 - %s)" (i :source))
+      ;; ---- beat-domain ops ----
+      ;; :beat-phase — host fractional beat position [0,1) via reserved "beat" hslider.
+      ;; The faust_modulator overrides this at block rate with the Link beat phase.
+      ;; Use alongside :beat-trigger for sample-rate beat boundary detection.
+      :beat-phase  "hslider(\"beat\", 0.0, 0.0, 1.0, 0.0001)"
+      ;; :beat-bpm — host tempo via reserved "bpm" hslider; range [20, 300] BPM.
+      ;; The faust_modulator overrides this with the Link peer tempo.
+      ;; Convert to beat period in seconds: (div 60.0 (beat-bpm))
+      :beat-bpm    "hslider(\"bpm\", 120.0, 20.0, 300.0, 0.01)"
+      ;; :beat-trigger — 1-sample pulse when phase wraps backward (beat boundary).
+      ;; (phase' - phase) > 0.5 detects the backward jump from ~1 to ~0.
+      ;; Rate: :sample; phase inlet is typically :beat-phase (:beat rate → crossing edge).
+      :beat-trigger (let [ph (i :phase)]
+                      (format "float((%s' - %s) > 0.5)" ph ph))
       ;; :faust — raw Faust expression with named inlet substitution.
       ;; %inlet-name placeholders are replaced with the Faust identifier of the
       ;; wired source node. Longer inlet names are substituted first to avoid
