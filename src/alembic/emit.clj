@@ -102,7 +102,25 @@
       :sub      (format "(%s - %s)" (i :a) (i :b))
       :div      (format "(%s / %s)" (i :a) (i :b))
       :history  (format "%s'" (i :input))
-      :delay    (format "de.fdelay(192000, %s, %s)" (i :time) (i :input))
+      ;; :delay — opts-aware delay line:
+      ;;   :smooth true  (default) → de.sdelay: glitch-free crossfade on time change
+      ;;   :smooth false, :interp :linear/:cubic → de.fdelay: fractional, raw Doppler
+      ;;   :smooth false, :interp :none → de.delay: integer, no interpolation
+      ;;   :time-cv true → de.fdelay driven by audio-rate :time-cv inlet
+      ;; max-time is a compile-time constant; ma.SR is resolved by Faust at compile time.
+      :delay    (let [{:keys [max-time interp smooth time-cv]
+                       :or   {max-time 1.0 interp :linear smooth true time-cv false}}
+                      (:opts node)
+                      max-s (str "int(" (fmt-num max-time) " * ma.SR)")]
+                  (cond
+                    time-cv
+                    (format "de.fdelay(%s, %s * ma.SR, %s)" max-s (i :time-cv) (i :in))
+                    smooth
+                    (format "de.sdelay(%s, 1024, %s * ma.SR, %s)" max-s (i :time) (i :in))
+                    (= interp :none)
+                    (format "de.delay(%s, int(%s * ma.SR), %s)" max-s (i :time) (i :in))
+                    :else
+                    (format "de.fdelay(%s, %s * ma.SR, %s)" max-s (i :time) (i :in))))
       :sah      (format "ba.sAndH(%s, %s)" (i :trigger) (i :input))
       :delta    (let [inp (i :input)] (format "(%s - %s')" inp inp))
       :wrap     (format "(%s + fmod((%s - %s), (%s - %s)))"
@@ -200,6 +218,19 @@
                          c  (i :coeff)]
                      (format "(%s + %s * %s' + %s * %s * %s'')"
                              in c in c c in))
+      ;; :segment — morphable slope/plateau waveshaper
+      ;; Asymmetric triangle: phase < shape → rising (0→1), else falling (1→0).
+      ;; shape near 0 → falling-saw; shape near 1 → rising-saw; 0.5 → triangle.
+      ;; curve: 0=concave (pow exponent≈4), 0.5=linear (exp≈1), 1=convex (exp≈0.25).
+      ;; Both branches guarded with max(0.001,…) to prevent division by zero.
+      :segment     (let [ph (i :phase)
+                         sh (i :shape)
+                         cv (i :curve)]
+                     (format (str "pow(max(0.0, select2(%s < max(0.001, %s), "
+                                  "(1.0 - %s) / max(0.001, 1.0 - %s), "
+                                  "%s / max(0.001, %s))), "
+                                  "pow(2.0, (0.5 - %s) * 4.0))")
+                             ph sh ph sh ph sh cv))
       ;; ---- ops that use compile-time :opts ----
       ;; :vco — oscillator shape selected at compile time from {:shape kw}
       ;; Uses Faust oscillators.lib bandlimited waveforms.

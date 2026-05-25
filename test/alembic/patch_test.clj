@@ -80,6 +80,51 @@
       (is (= (:id hist) (:to edge))))))
 
 ;; ---------------------------------------------------------------------------
+;; :delay — opts-aware delay line
+;; ---------------------------------------------------------------------------
+
+(defpatch! delay-default-test {}
+  (let [sig (sine-bi (phasor 440.0))
+        out (delay sig 0.1)]
+    (output out)))
+
+(defpatch! delay-smooth-false-test {}
+  (let [sig (sine-bi (phasor 440.0))
+        out (delay {:max-time 0.5 :smooth false :interp :linear} sig 0.1)]
+    (output out)))
+
+(defpatch! delay-time-cv-test {}
+  (let [sig (sine-bi (phasor 440.0))
+        cv  (mul (phasor 1.0) 0.02)
+        out (delay {:max-time 0.05 :time-cv true} sig cv)]
+    (output out)))
+
+(deftest delay-node-default-test
+  (testing "creates exactly one :delay node"
+    (is (= 1 (count (nodes-by-op delay-default-test :delay)))))
+  (let [node (first (nodes-by-op delay-default-test :delay))]
+    (testing "default inlets are :in and :time"
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :time))
+      (is (not (contains? (:inputs node) :time-cv))))
+    (testing ":delay is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest delay-node-opts-stored-test
+  (let [node (first (nodes-by-op delay-smooth-false-test :delay))]
+    (testing "opts stored on node"
+      (is (false?  (get-in node [:opts :smooth])))
+      (is (= 0.5   (get-in node [:opts :max-time])))
+      (is (= :linear (get-in node [:opts :interp]))))))
+
+(deftest delay-time-cv-inlets-test
+  (let [node (first (nodes-by-op delay-time-cv-test :delay))]
+    (testing "time-cv true → :in and :time-cv inlets (no :time)"
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :time-cv))
+      (is (not (contains? (:inputs node) :time))))))
+
+;; ---------------------------------------------------------------------------
 ;; output descriptor
 ;; ---------------------------------------------------------------------------
 
@@ -851,4 +896,35 @@
       (is (= #{:in :coeff} (set (keys (:inputs node))))))
     (testing ":damping is :sample rate"
       (is (= :sample (:rate node))))))
+
+;; ---------------------------------------------------------------------------
+;; :segment — morphable slope waveshaper
+;; ---------------------------------------------------------------------------
+
+(defpatch! segment-triangle-test {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.5)]
+    (output out)))
+
+(defpatch! segment-audio-shape-test {}
+  (let [ph    (phasor 2.0)
+        shape (sine-uni (phasor 0.1))
+        out   (segment ph shape 0.5)]
+    (output out)))
+
+(deftest segment-node-test
+  (testing "has exactly one :segment node"
+    (is (= 1 (count (nodes-by-op segment-triangle-test :segment)))))
+  (let [node (first (nodes-by-op segment-triangle-test :segment))]
+    (testing ":segment has :phase :shape :curve inlets"
+      (is (= #{:phase :shape :curve} (set (keys (:inputs node))))))
+    (testing ":segment is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest segment-audio-rate-shape-test
+  (testing "shape inlet accepts an audio-rate signal node"
+    (let [node  (first (nodes-by-op segment-audio-shape-test :segment))
+          nodes (:nodes segment-audio-shape-test)
+          shape-id (get-in node [:inputs :shape])]
+      (is (= :sample (:rate (get nodes shape-id)))))))
 

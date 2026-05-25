@@ -181,7 +181,7 @@
   mul, add, sub, div, history, delay, sah, delta, wrap, fold, clip, smooth,
   ar-env, ladder, svf, one-pole, dc-block, allpass, vca, slew, sample-hold,
   comparator, noise, pink-noise, crossfade, ring-mod, bitcrusher, soft-clip,
-  hard-clip, wave-fold, naive-svf, crossover, hysteresis, damping.
+  hard-clip, wave-fold, naive-svf, crossover, hysteresis, damping, segment.
   Use (param kw) for block-rate plugin parameters.
 
   Multi-output ops return a port-map; select outputs with (:port-name sym):

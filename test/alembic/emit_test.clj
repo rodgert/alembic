@@ -166,6 +166,70 @@
       (is (re-find #"\(n\d+ - n\d+'\)" src)))))
 
 ;; ---------------------------------------------------------------------------
+;; :delay — opts-aware delay line
+;; ---------------------------------------------------------------------------
+
+(defpatch! delay-default-patch {}
+  (let [sig (sine-bi (phasor 440.0))
+        out (delay sig 0.1)]
+    (output out)))
+
+(defpatch! delay-raw-patch {}
+  (let [sig (sine-bi (phasor 440.0))
+        out (delay {:max-time 0.5 :smooth false :interp :linear} sig 0.1)]
+    (output out)))
+
+(defpatch! delay-integer-patch {}
+  (let [sig (sine-bi (phasor 440.0))
+        out (delay {:max-time 0.2 :smooth false :interp :none} sig 0.05)]
+    (output out)))
+
+(defpatch! delay-cv-patch {}
+  (let [sig    (sine-bi (phasor 440.0))
+        timecv (mul (phasor 1.0) 0.02)
+        out    (delay {:max-time 0.05 :time-cv true} sig timecv)]
+    (output out)))
+
+(deftest delay-default-smooth-test
+  (let [src (emit-faust delay-default-patch)]
+    (testing "default emits de.sdelay (smooth)"
+      (is (str/includes? src "de.sdelay(")))
+    (testing "crossfade length 1024 is present"
+      (is (str/includes? src "1024")))
+    (testing "max buffer size uses ma.SR"
+      (is (str/includes? src "ma.SR")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(deftest delay-smooth-false-test
+  (let [src (emit-faust delay-raw-patch)]
+    (testing "smooth false emits de.fdelay"
+      (is (str/includes? src "de.fdelay(")))
+    (testing "does not emit de.sdelay"
+      (is (not (str/includes? src "de.sdelay("))))))
+
+(deftest delay-interp-none-test
+  (let [src (emit-faust delay-integer-patch)]
+    (testing "interp :none emits de.delay"
+      (is (str/includes? src "de.delay(")))
+    (testing "int() wraps delay time in second arg"
+      (is (re-find #"de\.delay\([^,]+, int\(" src)))))
+
+(deftest delay-time-cv-test
+  (let [src (emit-faust delay-cv-patch)]
+    (testing "time-cv true emits de.fdelay driven by cv signal"
+      (is (str/includes? src "de.fdelay(")))
+    (testing "max-time 0.05 reflected in buffer size"
+      (is (str/includes? src "0.05")))))
+
+(deftest delay-max-time-test
+  (testing "max-time 0.5 reflected in buffer constant"
+    (is (str/includes? (emit-faust delay-raw-patch) "0.5")))
+  (testing "different max-times produce different Faust output"
+    (is (not= (emit-faust delay-default-patch)
+              (emit-faust delay-raw-patch)))))
+
+;; ---------------------------------------------------------------------------
 ;; Raw Faust passthrough — graph constructed directly (no defpatch!)
 ;; ---------------------------------------------------------------------------
 
@@ -868,3 +932,53 @@
       (is (re-find #"n\d+''" src)))
     (testing "single process output"
       (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; :segment — morphable slope waveshaper
+;; ---------------------------------------------------------------------------
+
+(defpatch! segment-triangle-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.5)]
+    (output out)))
+
+(defpatch! segment-saw-up-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 1.0 0.5)]
+    (output out)))
+
+(defpatch! segment-saw-down-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.0 0.5)]
+    (output out)))
+
+(defpatch! segment-curved-emit {}
+  (let [ph  (phasor 1.0)
+        out (segment ph 0.5 0.0)]
+    (output out)))
+
+(deftest segment-emit-test
+  (let [src (emit-faust segment-triangle-emit)]
+    (testing "emits select2 for asymmetric slope"
+      (is (str/includes? src "select2(")))
+    (testing "emits pow for curve shaping"
+      (is (str/includes? src "pow(")))
+    (testing "emits max(0.0,...) to clamp before pow"
+      (is (str/includes? src "max(0.0,")))
+    (testing "emits max(0.001,...) to guard against zero denominator"
+      (is (str/includes? src "max(0.001,")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(deftest segment-shape-variants-test
+  (testing "shape=0 (falling-saw) differs from shape=0.5 (triangle)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-saw-down-emit))))
+  (testing "shape=1 (rising-saw) differs from shape=0.5 (triangle)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-saw-up-emit)))))
+
+(deftest segment-curve-variants-test
+  (testing "curve=0 (concave) differs from curve=0.5 (linear)"
+    (is (not= (emit-faust segment-triangle-emit)
+              (emit-faust segment-curved-emit)))))
