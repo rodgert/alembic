@@ -175,9 +175,10 @@
       :noise       "no.noise"
       ;; no.pink_noise — 1/f pink noise; no inputs
       :pink-noise  "no.pink_noise"
-      ;; ba.crossfade(pos, a, b) — linear blend; pos=0 → full a, pos=1 → full b
-      :crossfade   (format "(ba.crossfade(%s, %s, %s))"
-                           (i :pos) (i :a) (i :b))
+      ;; Linear blend: pos=0 → full a, pos=1 → full b
+      ;; Plain arithmetic (no ba.crossfade — API varies across Faust versions)
+      :crossfade   (format "((1.0 - %s) * %s + %s * %s)"
+                           (i :pos) (i :a) (i :pos) (i :b))
       ;; Ring mod / AM: carrier × (modulator + dc); dc=0 → ring mod, dc=1 → AM
       :ring-mod    (format "(%s * (%s + %s))"
                            (i :carrier) (i :modulator) (i :dc))
@@ -314,6 +315,9 @@
             (format "float((%s == %s) & %s)" src wrap-target edge))))
       ;; Secondary port of :comparator — logical inverse of the primary gate
       :comparator-inv (format "(1.0 - %s)" (i :source))
+      ;; :audio-in — process-level audio input; each node maps to one Faust _ wire.
+      ;; Two :audio-in nodes → two distinct process inputs (stereo input pair).
+      :audio-in    "_"
       ;; ---- beat-domain ops ----
       ;; :beat-phase — host fractional beat position [0,1) via reserved "beat" hslider.
       ;; The faust_modulator overrides this at block rate with the Link beat phase.
@@ -352,26 +356,54 @@
   as documented in design-notes-alembic-datamodel.md.
 
   The emitted program imports stdfaust.lib, defines every node in topological
-  order, then declares process from the patch outputs."
+  order, then declares process from the patch outputs.
+
+  When the patch contains :audio-in nodes, they are emitted as function
+  parameters rather than named definitions: `alembic_dsp(n0) = n5; process = alembic_dsp;`
+  This avoids Faust's block-diagram arity explosion caused by sharing the `_`
+  identity wire via a named equation (each reference counts as a separate input)."
   [{:keys [nodes edges params outputs] :as _graph}]
   (when (empty? outputs)
     (throw (ex-info "Cannot emit Faust: patch has no outputs" {})))
-  (let [order   (topo-sort nodes edges)
-        defs    (mapv (fn [id]
-                        (let [node (get nodes id)]
-                          (str (node-ident id) " = "
-                               (node-rhs node params)
-                               ";")))
-                      order)
-        proc    (let [sorted (sort-by :channel outputs)
-                       max-ch (if (seq sorted) (:channel (last sorted)) -1)
-                       by-ch  (into {} (map (fn [o] [(:channel o) (node-ident (:node o))]) sorted))]
-                   (->> (range (inc max-ch))
-                        (map #(get by-ch % "0.0"))
-                        (str/join ", ")))
-        sections [["import(\"stdfaust.lib\");"]
-                  [""]
-                  defs
-                  [""]
-                  [(str "process = " proc ";")]]]
-    (str/join "\n" (apply concat sections))))
+  (let [order     (topo-sort nodes edges)
+        audio-ins (->> order
+                       (filter #(= :audio-in (:op (get nodes %))))
+                       (mapv node-ident))
+        defs      (vec (keep (fn [id]
+                               (let [node (get nodes id)]
+                                 (when-not (= :audio-in (:op node))
+                                   (str (node-ident id) " = "
+                                        (node-rhs node params)
+                                        ";"))))
+                             order))
+        proc      (let [sorted (sort-by :channel outputs)
+                        max-ch (if (seq sorted) (:channel (last sorted)) -1)
+                        by-ch  (into {} (map (fn [o] [(:channel o) (node-ident (:node o))]) sorted))]
+                    (->> (range (inc max-ch))
+                         (map #(get by-ch % "0.0"))
+                         (str/join ", ")))
+        lines (if (seq audio-ins)
+                (let [args (str/join ", " audio-ins)]
+                  ;; Inner defs reference the function parameter (audio-in) by name,
+                  ;; so they must live inside a 'with {}' clause that is scoped to the
+                  ;; function.  Without this, Faust sees n0 as an unbound top-level
+                  ;; symbol and rejects the program.
+                  (if (seq defs)
+                    (concat ["import(\"stdfaust.lib\");"
+                             ""]
+                            [(str "alembic_dsp(" args ") = " proc)]
+                            ["  with {"]
+                            (map #(str "    " %) defs)
+                            ["  };"]
+                            ["process = alembic_dsp;"])
+                    ;; Pass-through patch — no inner definitions needed
+                    ["import(\"stdfaust.lib\");"
+                     ""
+                     (str "alembic_dsp(" args ") = " proc ";")
+                     "process = alembic_dsp;"]))
+                (concat ["import(\"stdfaust.lib\");"
+                         ""]
+                        defs
+                        [""
+                         (str "process = " proc ";")]))]
+    (str/join "\n" lines)))

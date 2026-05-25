@@ -3,6 +3,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.string :as str]
             [alembic.emit :refer [emit-faust]]
+            [alembic.compile]
             [alembic.patch :refer [defpatch!]]))
 
 ;; ---------------------------------------------------------------------------
@@ -469,8 +470,8 @@
 
 (deftest crossfade-emit-test
   (let [src (emit-faust crossfade-emit-patch)]
-    (testing "emits ba.crossfade call"
-      (is (str/includes? src "ba.crossfade(")))
+    (testing "emits linear blend: (1.0 - pos) * a + pos * b"
+      (is (re-find #"\(1\.0 - n\d+\) \* n\d+ \+ n\d+ \* n\d+" src)))
     (testing "single process output"
       (is (re-find #"process = n\d+;" src)))))
 
@@ -1085,3 +1086,40 @@
         (is (< (idx #"hslider.*beat") (idx #"float\(")))))
     (testing "single process output"
       (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; :audio-in — process-level audio input
+;; ---------------------------------------------------------------------------
+
+(defpatch! audio-in-filter-patch {}
+  (let [in  (audio-in)
+        out (svf in 0.3 0.5 0.0)]
+    (output out)))
+
+(defpatch! audio-in-stereo-patch {}
+  (let [l (audio-in)
+        r (audio-in)]
+    (output l)
+    (output r)))
+
+(deftest audio-in-emit-test
+  (let [src (emit-faust audio-in-filter-patch)]
+    (testing "audio-in node emitted as alembic_dsp function parameter"
+      (is (re-find #"alembic_dsp\(n\d+\) =" src)))
+    (testing "svf references the audio-in node"
+      (is (str/includes? src "fi.svf_morph(")))
+    (testing "process delegates to alembic_dsp"
+      (is (str/includes? src "process = alembic_dsp;")))
+    (testing "no bare n = _; definition emitted"
+      (is (not (re-find #"n\d+ = _;" src))))))
+
+(deftest audio-in-stereo-emit-test
+  (let [src (emit-faust audio-in-stereo-patch)]
+    (testing "two audio-in nodes emitted as alembic_dsp parameters"
+      (is (re-find #"alembic_dsp\(n\d+, n\d+\) =" src)))
+    (testing "process delegates to alembic_dsp"
+      (is (str/includes? src "process = alembic_dsp;")))))
+
+(deftest audio-in-validates-test
+  (testing "audio-in filter patch produces valid Faust"
+    (is (nil? (alembic.compile/validate audio-in-filter-patch)))))

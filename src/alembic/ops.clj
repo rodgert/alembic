@@ -119,6 +119,12 @@
                   (when (< n 2)
                     (throw (ex-info ":select :n must be >= 2" {:n n})))
                   (into (mapv #(keyword (str "in-" %)) (range n)) [:index]))
+   ;; ---- audio input ----
+   ;; :audio-in — process-level audio input signal; maps to Faust's _ wire.
+   ;;   No inlets. Each :audio-in node in a patch is a distinct process input.
+   ;;   The CLAP plugin host delivers audio to these in channel order (first
+   ;;   :audio-in node = channel 0, second = channel 1, etc.).
+   :audio-in    []
    ;; ---- beat-domain ops ----
    ;; :beat-phase — host fractional beat position [0,1); rate :beat
    ;;   No inlets — populated by faust_modulator via reserved hslider("beat").
@@ -183,6 +189,7 @@
    :table       :sample
    :select       :sample
    :buffer       :sample
+   :audio-in     :sample
    :beat-phase   :beat
    :beat-bpm     :block
    :beat-trigger :sample

@@ -202,6 +202,12 @@
   hard-clip, wave-fold, naive-svf, crossover, hysteresis, damping, segment.
   Use (param kw) for block-rate plugin parameters.
 
+  Audio input:
+    (audio-in)  → process-level audio input; rate :sample.
+                  Each call produces a distinct input channel (first = ch 0,
+                  second = ch 1, etc.). Use to build audio-rate processors
+                  (filters, distortion, EQ) as well as modulators.
+
   Beat-domain ops (musical time sync):
     (beat-phase)          → host beat phase [0,1); rate :beat
     (beat-bpm)            → host tempo in BPM; rate :block

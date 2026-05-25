@@ -1041,3 +1041,34 @@
   (testing "adding sample-rate op promotes dominant rate to :sample"
     (is (= :sample (:rate beat-phase-patch)))))
 
+;; ---------------------------------------------------------------------------
+;; :audio-in — process-level audio input
+;; ---------------------------------------------------------------------------
+
+(defpatch! audio-in-mono-test {}
+  (let [in  (audio-in)
+        out (svf in 0.3 0.5 0.0)]
+    (output out)))
+
+(defpatch! audio-in-stereo-patch {}
+  (let [l (audio-in)
+        r (audio-in)]
+    (output l)
+    (output r)))
+
+(deftest audio-in-node-test
+  (testing "has exactly one :audio-in node"
+    (is (= 1 (count (nodes-by-op audio-in-mono-test :audio-in)))))
+  (let [node (first (nodes-by-op audio-in-mono-test :audio-in))]
+    (testing ":audio-in has no inlets"
+      (is (empty? (:inputs node))))
+    (testing ":audio-in is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest audio-in-stereo-test
+  (testing "two (audio-in) calls produce two distinct :audio-in nodes"
+    (is (= 2 (count (nodes-by-op audio-in-stereo-patch :audio-in)))))
+  (testing "each node has a distinct id"
+    (let [ids (map :id (nodes-by-op audio-in-stereo-patch :audio-in))]
+      (is (= 2 (count (distinct ids)))))))
+
