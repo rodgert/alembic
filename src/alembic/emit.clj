@@ -102,7 +102,25 @@
       :sub      (format "(%s - %s)" (i :a) (i :b))
       :div      (format "(%s / %s)" (i :a) (i :b))
       :history  (format "%s'" (i :input))
-      :delay    (format "de.fdelay(192000, %s, %s)" (i :time) (i :input))
+      ;; :delay — opts-aware delay line:
+      ;;   :smooth true  (default) → de.sdelay: glitch-free crossfade on time change
+      ;;   :smooth false, :interp :linear/:cubic → de.fdelay: fractional, raw Doppler
+      ;;   :smooth false, :interp :none → de.delay: integer, no interpolation
+      ;;   :time-cv true → de.fdelay driven by audio-rate :time-cv inlet
+      ;; max-time is a compile-time constant; ma.SR is resolved by Faust at compile time.
+      :delay    (let [{:keys [max-time interp smooth time-cv]
+                       :or   {max-time 1.0 interp :linear smooth true time-cv false}}
+                      (:opts node)
+                      max-s (str "int(" (fmt-num max-time) " * ma.SR)")]
+                  (cond
+                    time-cv
+                    (format "de.fdelay(%s, %s * ma.SR, %s)" max-s (i :time-cv) (i :in))
+                    smooth
+                    (format "de.sdelay(%s, 1024, %s * ma.SR, %s)" max-s (i :time) (i :in))
+                    (= interp :none)
+                    (format "de.delay(%s, int(%s * ma.SR), %s)" max-s (i :time) (i :in))
+                    :else
+                    (format "de.fdelay(%s, %s * ma.SR, %s)" max-s (i :time) (i :in))))
       :sah      (format "ba.sAndH(%s, %s)" (i :trigger) (i :input))
       :delta    (let [inp (i :input)] (format "(%s - %s')" inp inp))
       :wrap     (format "(%s + fmod((%s - %s), (%s - %s)))"

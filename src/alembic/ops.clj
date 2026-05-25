@@ -14,7 +14,15 @@
    :sub         [:a :b]
    :div         [:a :b]
    :history     [:input]
-   :delay       [:input :time]
+   ;; :delay — parameterisable delay line
+   ;;   opts: {:max-time 1.0       compile-time buffer allocation in seconds
+   ;;          :interp   :linear   :none (integer) | :linear | :cubic
+   ;;          :smooth   true      glitch-free time changes via de.sdelay crossfade
+   ;;          :time-cv  false     when true, adds :time-cv audio-rate inlet instead of :time}
+   :delay       (fn [{:keys [time-cv] :or {time-cv false}}]
+                  (if time-cv
+                    [:in :time-cv]
+                    [:in :time]))
    :sah         [:input :trigger]
    :delta       [:input]
    :wrap        [:input :lo :hi]
