@@ -5,7 +5,8 @@
             [alembic.emit :refer [emit-faust]]
             [alembic.compile]
             [alembic.patch :refer [defpatch!]]
-            [examples.ks-string]))
+            [examples.ks-string]
+            [examples.shelves]))
 
 ;; ---------------------------------------------------------------------------
 ;; Smoke — minimal patch
@@ -1326,3 +1327,54 @@
 (deftest ks-string-validates-test
   (testing "ks-string patch produces valid Faust"
     (is (nil? (alembic.compile/validate examples.ks-string/ks-string)))))
+
+;; ---------------------------------------------------------------------------
+;; :shelf-lo :shelf-hi :peak-eq emit
+;; ---------------------------------------------------------------------------
+
+(defpatch! shelf-lo-emit-patch {}
+  (let [in  (audio-in)
+        out (shelf-lo in 0.1 6.0)]
+    (output out)))
+
+(defpatch! shelf-hi-emit-patch {}
+  (let [in  (audio-in)
+        out (shelf-hi in 0.8 -6.0)]
+    (output out)))
+
+(defpatch! peak-eq-emit-patch {}
+  (let [in  (audio-in)
+        out (peak-eq in 0.3 3.0 0.5)]
+    (output out)))
+
+(deftest shelf-lo-emit-test
+  (let [src (emit-faust shelf-lo-emit-patch)]
+    (testing "fi.low_shelf present"
+      (is (str/includes? src "fi.low_shelf(")))
+    (testing "freq scaled to Hz (ma.SR * 0.5)"
+      (is (str/includes? src "ma.SR * 0.5")))))
+
+(deftest shelf-hi-emit-test
+  (let [src (emit-faust shelf-hi-emit-patch)]
+    (testing "fi.high_shelf present"
+      (is (str/includes? src "fi.high_shelf(")))))
+
+(deftest peak-eq-emit-test
+  (let [src (emit-faust peak-eq-emit-patch)]
+    (testing "fi.peak_eq present"
+      (is (str/includes? src "fi.peak_eq(")))
+    (testing "Q mapped as 0.5 + q * 9.5"
+      (is (str/includes? src "0.5 + ")))))
+
+(deftest shelves-emit-test
+  (let [src (emit-faust examples.shelves/shelves)]
+    (testing "low shelf present"
+      (is (str/includes? src "fi.low_shelf(")))
+    (testing "high shelf present"
+      (is (str/includes? src "fi.high_shelf(")))
+    (testing "two peak-eq sections present"
+      (is (= 2 (count (re-seq #"fi\.peak_eq\(" src)))))))
+
+(deftest shelves-validates-test
+  (testing "shelves patch produces valid Faust"
+    (is (nil? (alembic.compile/validate examples.shelves/shelves)))))

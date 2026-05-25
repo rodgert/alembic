@@ -45,6 +45,20 @@
    :one-pole    [:in :cutoff]
    ;; :dc-block — 1-pole highpass that removes DC offset (fi.dcblocker)
    :dc-block    [:in]
+   ;; :shelf-lo — RBJ second-order low-shelving EQ (fi.low_shelf)
+   ;;   freq   normalised [0, 1] corner frequency  (0 = DC, 1 = Nyquist)
+   ;;   gain   gain in dB  (positive = boost, negative = cut; typical range ±18 dB)
+   :shelf-lo    [:in :freq :gain]
+   ;; :shelf-hi — RBJ second-order high-shelving EQ (fi.high_shelf)
+   ;;   freq   normalised [0, 1] corner frequency
+   ;;   gain   gain in dB  (positive = boost, negative = cut)
+   :shelf-hi    [:in :freq :gain]
+   ;; :peak-eq — RBJ second-order peaking (bell) EQ (fi.peak_eq)
+   ;;   freq   normalised [0, 1] centre frequency
+   ;;   gain   gain in dB at the peak (positive = boost, negative = cut)
+   ;;   q      normalised [0, 1] Q  (0 = very wide, 1 = very narrow)
+   ;;          maps to Q [0.5, 10]: q=0 → Q 0.5 (≈ 2 octave), q=1 → Q 10 (≈ 0.1 octave)
+   :peak-eq     [:in :freq :gain :q]
    ;; :allpass — allpass delay section for reverb diffusion / phasing (de.apf)
    ;;   time   delay time in seconds
    ;;   coeff  feedback/feedforward coefficient [−1, 1]; |coeff| < 1 → flat amplitude
@@ -204,6 +218,9 @@
    :crossover   :sample
    :one-pole    :sample
    :dc-block    :sample
+   :shelf-lo    :sample
+   :shelf-hi    :sample
+   :peak-eq     :sample
    ;; ---- stateless pure-function ops — rate follows max(input rates) ----
    :mul         :polymorphic
    :add         :polymorphic
