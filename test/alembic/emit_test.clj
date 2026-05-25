@@ -224,7 +224,51 @@
       (is (str/includes? src "ve.moogLadder(")))))
 
 ;; ---------------------------------------------------------------------------
-;; Level 1 filters — :svf
+;; Level 1 extended — :one-pole :dc-block :allpass
+;; ---------------------------------------------------------------------------
+
+(defpatch! one-pole-emit-patch {}
+  (let [osc (phasor 220.0)
+        out (one-pole osc 0.5)]
+    (output out)))
+
+(deftest one-pole-emit-test
+  (let [src (emit-faust one-pole-emit-patch)]
+    (testing "emits si.smooth call"
+      (is (str/includes? src "si.smooth(")))
+    (testing "cutoff clamping constants present"
+      (is (str/includes? src "0.9999")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! dc-block-emit-patch {}
+  (let [osc (phasor 1.0)
+        out (dc-block osc)]
+    (output out)))
+
+(deftest dc-block-emit-test
+  (let [src (emit-faust dc-block-emit-patch)]
+    (testing "emits fi.dcblocker"
+      (is (str/includes? src "fi.dcblocker")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! allpass-emit-patch {}
+  (let [osc (phasor 1.0)
+        out (allpass osc 0.02 0.5)]
+    (output out)))
+
+(deftest allpass-emit-test
+  (let [src (emit-faust allpass-emit-patch)]
+    (testing "emits de.apf call"
+      (is (str/includes? src "de.apf(")))
+    (testing "converts time to samples via ma.SR"
+      (is (str/includes? src "ma.SR")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 extended — :svf
 ;; ---------------------------------------------------------------------------
 
 (defpatch! svf-emit-patch {}
@@ -271,6 +315,175 @@
       (is (str/includes? src "\"mode\"")))
     (testing "fi.svf_morph still emitted"
       (is (str/includes? src "fi.svf_morph(")))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 extended — signal ops
+;; ---------------------------------------------------------------------------
+
+(defpatch! vca-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (vca osc 0.5)]
+    (output out)))
+
+(deftest vca-emit-test
+  (let [src (emit-faust vca-emit-patch)]
+    (testing "emits multiply expression"
+      (is (re-find #"n\d+ \* n\d+" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! slew-emit-patch {}
+  (let [osc (phasor 1.0)
+        out (slew osc 0.01 0.03)]
+    (output out)))
+
+(deftest slew-emit-test
+  (let [src (emit-faust slew-emit-patch)]
+    (testing "emits select2 with feedback loop"
+      (is (str/includes? src "select2("))
+      (is (str/includes? src "~ _")))
+    (testing "uses ma.SR for time constant conversion"
+      (is (str/includes? src "ma.SR")))
+    (testing "emits exp for RC coefficient"
+      (is (str/includes? src "exp(")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! sample-hold-emit-patch {}
+  (let [osc  (phasor 440.0)
+        trig (phasor 1.0)
+        out  (sample-hold osc trig)]
+    (output out)))
+
+(deftest sample-hold-emit-test
+  (let [src (emit-faust sample-hold-emit-patch)]
+    (testing "emits ba.sAndH call"
+      (is (str/includes? src "ba.sAndH(")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! comparator-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (comparator osc 0.0)]
+    (output out)))
+
+(deftest comparator-emit-test
+  (let [src (emit-faust comparator-emit-patch)]
+    (testing "emits float(... > ...) threshold test"
+      (is (re-find #"float\(.+>\s*.+\)" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! noise-emit-patch {}
+  (let [n (noise)]
+    (output n)))
+
+(deftest noise-emit-test
+  (let [src (emit-faust noise-emit-patch)]
+    (testing "emits no.noise"
+      (is (str/includes? src "no.noise")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! pink-noise-emit-patch {}
+  (let [n (pink-noise)]
+    (output n)))
+
+(deftest pink-noise-emit-test
+  (let [src (emit-faust pink-noise-emit-patch)]
+    (testing "emits no.pink_noise"
+      (is (str/includes? src "no.pink_noise")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! crossfade-emit-patch {}
+  (let [a   (phasor 440.0)
+        b   (phasor 441.0)
+        out (crossfade a b 0.5)]
+    (output out)))
+
+(deftest crossfade-emit-test
+  (let [src (emit-faust crossfade-emit-patch)]
+    (testing "emits ba.crossfade call"
+      (is (str/includes? src "ba.crossfade(")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 extended — :ring-mod :bitcrusher
+;; ---------------------------------------------------------------------------
+
+(defpatch! ring-mod-emit-patch {}
+  (let [c   (phasor 440.0)
+        m   (phasor 110.0)
+        out (ring-mod c m 0.0)]
+    (output out)))
+
+(deftest ring-mod-emit-test
+  (let [src (emit-faust ring-mod-emit-patch)]
+    (testing "emits carrier × (modulator + dc) expression"
+      (is (re-find #"n\d+ \* \(n\d+ \+ n\d+\)" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! bitcrusher-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (bitcrusher osc 12.0)]
+    (output out)))
+
+(deftest bitcrusher-emit-test
+  (let [src (emit-faust bitcrusher-emit-patch)]
+    (testing "emits floor rounding expression"
+      (is (str/includes? src "floor(")))
+    (testing "emits pow for bit-depth scaling"
+      (is (str/includes? src "pow(2.0,")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
+;; Level 1 extended — waveshapers
+;; ---------------------------------------------------------------------------
+
+(defpatch! soft-clip-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (soft-clip osc)]
+    (output out)))
+
+(deftest soft-clip-emit-test
+  (let [src (emit-faust soft-clip-emit-patch)]
+    (testing "emits Padé tanh: x/(1+|x|)"
+      (is (re-find #"n\d+ / \(1\.0 \+ abs\(n\d+\)\)" src)))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! hard-clip-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (hard-clip osc)]
+    (output out)))
+
+(deftest hard-clip-emit-test
+  (let [src (emit-faust hard-clip-emit-patch)]
+    (testing "emits max/min clamp"
+      (is (re-find #"max\(-1\.0, min\(-?1\.0," src)))
+    (testing "emits cubic polynomial coefficient 1.5"
+      (is (str/includes? src "1.5")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(defpatch! wave-fold-emit-patch {}
+  (let [osc (phasor 440.0)
+        out (wave-fold osc)]
+    (output out)))
+
+(deftest wave-fold-emit-test
+  (let [src (emit-faust wave-fold-emit-patch)]
+    (testing "emits floor-based positive-modulo fold"
+      (is (str/includes? src "floor("))
+      (is (str/includes? src "4.0")))
+    (testing "emits abs for triangle shape"
+      (is (str/includes? src "abs(")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Named outputs — gap padding in process declaration

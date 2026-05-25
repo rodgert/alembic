@@ -215,6 +215,231 @@
     (is (some #(nil? (:semantic %))  (:outputs mixed-named-unnamed-test)))))
 
 ;; ---------------------------------------------------------------------------
+;; Level 1 extended — filters, signal ops, waveshapers
+;; ---------------------------------------------------------------------------
+
+(defpatch! one-pole-test {}
+  (let [osc (phasor 440.0)
+        out (one-pole osc 0.5)]
+    (output out)))
+
+(deftest one-pole-node-test
+  (testing "has exactly one :one-pole node"
+    (is (= 1 (count (nodes-by-op one-pole-test :one-pole)))))
+  (testing ":one-pole has :in and :cutoff inlets"
+    (let [node (first (nodes-by-op one-pole-test :one-pole))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :cutoff))))
+  (testing ":one-pole is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op one-pole-test :one-pole)))))))
+
+(defpatch! dc-block-test {}
+  (let [osc (phasor 1.0)
+        out (dc-block osc)]
+    (output out)))
+
+(deftest dc-block-node-test
+  (testing "has exactly one :dc-block node"
+    (is (= 1 (count (nodes-by-op dc-block-test :dc-block)))))
+  (testing ":dc-block has :in inlet"
+    (let [node (first (nodes-by-op dc-block-test :dc-block))]
+      (is (contains? (:inputs node) :in))))
+  (testing ":dc-block is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op dc-block-test :dc-block)))))))
+
+(defpatch! allpass-test {}
+  (let [osc (phasor 1.0)
+        out (allpass osc 0.02 0.5)]
+    (output out)))
+
+(deftest allpass-node-test
+  (testing "has exactly one :allpass node"
+    (is (= 1 (count (nodes-by-op allpass-test :allpass)))))
+  (testing ":allpass has :in :time :coeff inlets"
+    (let [node (first (nodes-by-op allpass-test :allpass))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :time))
+      (is (contains? (:inputs node) :coeff))))
+  (testing ":allpass is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op allpass-test :allpass)))))))
+
+(defpatch! vca-test {}
+  (let [osc (phasor 440.0)
+        out (vca osc 0.5)]
+    (output out)))
+
+(deftest vca-node-test
+  (testing "has exactly one :vca node"
+    (is (= 1 (count (nodes-by-op vca-test :vca)))))
+  (testing ":vca has :in and :level inlets"
+    (let [node (first (nodes-by-op vca-test :vca))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :level))))
+  (testing ":vca is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op vca-test :vca)))))))
+
+(defpatch! slew-test {}
+  (let [osc (phasor 1.0)
+        out (slew osc 0.01 0.03)]
+    (output out)))
+
+(deftest slew-node-test
+  (testing "has exactly one :slew node"
+    (is (= 1 (count (nodes-by-op slew-test :slew)))))
+  (testing ":slew has :in :rise :fall inlets"
+    (let [node (first (nodes-by-op slew-test :slew))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :rise))
+      (is (contains? (:inputs node) :fall))))
+  (testing ":slew is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op slew-test :slew)))))))
+
+(defpatch! sample-hold-test {}
+  (let [osc  (phasor 440.0)
+        trig (phasor 1.0)
+        out  (sample-hold osc trig)]
+    (output out)))
+
+(deftest sample-hold-node-test
+  (testing "has exactly one :sample-hold node"
+    (is (= 1 (count (nodes-by-op sample-hold-test :sample-hold)))))
+  (testing ":sample-hold has :in and :trigger inlets"
+    (let [node (first (nodes-by-op sample-hold-test :sample-hold))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :trigger))))
+  (testing ":sample-hold is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op sample-hold-test :sample-hold)))))))
+
+(defpatch! comparator-test {}
+  (let [osc (phasor 440.0)
+        out (comparator osc 0.0)]
+    (output out)))
+
+(deftest comparator-node-test
+  (testing "has exactly one :comparator node"
+    (is (= 1 (count (nodes-by-op comparator-test :comparator)))))
+  (testing ":comparator has :in and :threshold inlets"
+    (let [node (first (nodes-by-op comparator-test :comparator))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :threshold))))
+  (testing ":comparator is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op comparator-test :comparator)))))))
+
+(defpatch! noise-test {}
+  (let [n (noise)]
+    (output n)))
+
+(deftest noise-node-test
+  (testing "has exactly one :noise node"
+    (is (= 1 (count (nodes-by-op noise-test :noise)))))
+  (testing ":noise node has no inputs"
+    (let [node (first (nodes-by-op noise-test :noise))]
+      (is (= {} (:inputs node)))))
+  (testing ":noise is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op noise-test :noise)))))))
+
+(defpatch! pink-noise-test {}
+  (let [n (pink-noise)]
+    (output n)))
+
+(deftest pink-noise-node-test
+  (testing "has exactly one :pink-noise node"
+    (is (= 1 (count (nodes-by-op pink-noise-test :pink-noise)))))
+  (testing ":pink-noise node has no inputs"
+    (let [node (first (nodes-by-op pink-noise-test :pink-noise))]
+      (is (= {} (:inputs node)))))
+  (testing ":pink-noise is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op pink-noise-test :pink-noise)))))))
+
+(defpatch! crossfade-test {}
+  (let [a   (phasor 440.0)
+        b   (phasor 441.0)
+        out (crossfade a b 0.5)]
+    (output out)))
+
+(deftest crossfade-node-test
+  (testing "has exactly one :crossfade node"
+    (is (= 1 (count (nodes-by-op crossfade-test :crossfade)))))
+  (testing ":crossfade has :a :b :pos inlets"
+    (let [node (first (nodes-by-op crossfade-test :crossfade))]
+      (is (contains? (:inputs node) :a))
+      (is (contains? (:inputs node) :b))
+      (is (contains? (:inputs node) :pos))))
+  (testing ":crossfade is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op crossfade-test :crossfade)))))))
+
+(defpatch! ring-mod-test {}
+  (let [c   (phasor 440.0)
+        m   (phasor 110.0)
+        out (ring-mod c m 0.0)]
+    (output out)))
+
+(deftest ring-mod-node-test
+  (testing "has exactly one :ring-mod node"
+    (is (= 1 (count (nodes-by-op ring-mod-test :ring-mod)))))
+  (testing ":ring-mod has :carrier :modulator :dc inlets"
+    (let [node (first (nodes-by-op ring-mod-test :ring-mod))]
+      (is (contains? (:inputs node) :carrier))
+      (is (contains? (:inputs node) :modulator))
+      (is (contains? (:inputs node) :dc))))
+  (testing ":ring-mod is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op ring-mod-test :ring-mod)))))))
+
+(defpatch! bitcrusher-test {}
+  (let [osc (phasor 440.0)
+        out (bitcrusher osc 12.0)]
+    (output out)))
+
+(deftest bitcrusher-node-test
+  (testing "has exactly one :bitcrusher node"
+    (is (= 1 (count (nodes-by-op bitcrusher-test :bitcrusher)))))
+  (testing ":bitcrusher has :in and :bits inlets"
+    (let [node (first (nodes-by-op bitcrusher-test :bitcrusher))]
+      (is (contains? (:inputs node) :in))
+      (is (contains? (:inputs node) :bits))))
+  (testing ":bitcrusher is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op bitcrusher-test :bitcrusher)))))))
+
+(defpatch! soft-clip-test {}
+  (let [osc (phasor 440.0)
+        out (soft-clip osc)]
+    (output out)))
+
+(deftest soft-clip-node-test
+  (testing "has exactly one :soft-clip node"
+    (is (= 1 (count (nodes-by-op soft-clip-test :soft-clip)))))
+  (testing ":soft-clip has :in inlet"
+    (is (contains? (:inputs (first (nodes-by-op soft-clip-test :soft-clip))) :in)))
+  (testing ":soft-clip is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op soft-clip-test :soft-clip)))))))
+
+(defpatch! hard-clip-test {}
+  (let [osc (phasor 440.0)
+        out (hard-clip osc)]
+    (output out)))
+
+(deftest hard-clip-node-test
+  (testing "has exactly one :hard-clip node"
+    (is (= 1 (count (nodes-by-op hard-clip-test :hard-clip)))))
+  (testing ":hard-clip has :in inlet"
+    (is (contains? (:inputs (first (nodes-by-op hard-clip-test :hard-clip))) :in)))
+  (testing ":hard-clip is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op hard-clip-test :hard-clip)))))))
+
+(defpatch! wave-fold-test {}
+  (let [osc (phasor 440.0)
+        out (wave-fold osc)]
+    (output out)))
+
+(deftest wave-fold-node-test
+  (testing "has exactly one :wave-fold node"
+    (is (= 1 (count (nodes-by-op wave-fold-test :wave-fold)))))
+  (testing ":wave-fold has :in inlet"
+    (is (contains? (:inputs (first (nodes-by-op wave-fold-test :wave-fold))) :in)))
+  (testing ":wave-fold is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op wave-fold-test :wave-fold)))))))
+
+;; ---------------------------------------------------------------------------
 ;; Dominant rate
 ;; ---------------------------------------------------------------------------
 
