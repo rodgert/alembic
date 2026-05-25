@@ -314,7 +314,16 @@
             (format "float((%s == %s) & %s)" src wrap-target edge))))
       ;; Secondary port of :comparator — logical inverse of the primary gate
       :comparator-inv (format "(1.0 - %s)" (i :source))
-      :faust       (:source node)
+      ;; :faust — raw Faust expression with named inlet substitution.
+      ;; %inlet-name placeholders are replaced with the Faust identifier of the
+      ;; wired source node. Longer inlet names are substituted first to avoid
+      ;; prefix collisions (e.g. %in-wet replaced before %in).
+      ;; Nodes with no :inputs return :source unchanged — backward compatible.
+      :faust       (let [src (:source node)]
+                     (reduce (fn [s [inlet node-id]]
+                               (str/replace s (str "%" (name inlet)) (node-ident node-id)))
+                             src
+                             (sort-by (comp - count name first) (:inputs node))))
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))
 

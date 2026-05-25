@@ -67,6 +67,24 @@
               (swap! params assoc pname id)
               id)))
 
+        (= op 'faust)
+        (let [src-str  (first args)
+              inlet-map (when (and (> (count args) 1) (map? (second args)))
+                          (second args))
+              _        (when-not (string? src-str)
+                         (throw (ex-info "faust source must be a string literal" {:got src-str})))
+              id       (next-id! counter)
+              inlets   (into {} (map (fn [[k v]] [k (walk-expr v state)]) inlet-map))
+              node     {:id id :op :faust :rate :sample :source src-str :inputs inlets}]
+          (swap! nodes assoc id node)
+          (doseq [[inlet src-id] inlets]
+            (let [src-rate  (:rate (get @nodes src-id))
+                  crossing? (not= src-rate :sample)]
+              (swap! edges conj
+                     (cond-> {:from src-id :to id :inlet inlet}
+                       crossing? (assoc :rate-crossing? true)))))
+          id)
+
         (= op 'output)
         (throw (ex-info "output must not be nested — use at top level of the patch body" {}))
 
@@ -192,6 +210,13 @@
     (vco {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5} freq)
     (counter {:max 16 :dir :up|:down :wrap true|false} clock reset)
     (table {:data [floats] :size N :mode :wrap|:clamp|:fold} index)
+
+  Inline Faust expressions with named wired inlets:
+    (faust \"expr with %inlet-names\" {:inlet-name expr ...})
+    e.g. (faust \"os.osc(%freq)\" {:freq freq-signal})
+    %inlet-name placeholders are replaced at emit time with the Faust
+    identifier of the wired source node. Omit the inlet map for a
+    self-contained Faust expression with no wired inlets.
 
   Output forms:
     (output expr)         — unnamed, assigned channel 0, 1, 2 … in declaration order
