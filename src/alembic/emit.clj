@@ -149,6 +149,19 @@
       ;; fi.dcblocker — 1-pole HP that removes DC bias
       :dc-block    (format "(%s : fi.dcblocker)"
                            (i :in))
+      ;; fi.low_shelf(f_hz, dBgain) — RBJ 2nd-order low-shelving EQ.
+      ;; freq [0,1] → Hz (linear: 0→0 Hz, 1→Nyquist).
+      ;; gain in dB: positive = boost below corner, negative = cut.
+      :shelf-lo    (format "(%s : fi.low_shelf(%s * ma.SR * 0.5, %s))"
+                           (i :in) (i :freq) (i :gain))
+      ;; fi.high_shelf(f_hz, dBgain) — RBJ 2nd-order high-shelving EQ.
+      ;; Same frequency and gain mapping as :shelf-lo.
+      :shelf-hi    (format "(%s : fi.high_shelf(%s * ma.SR * 0.5, %s))"
+                           (i :in) (i :freq) (i :gain))
+      ;; fi.peak_eq(f_hz, dBgain, Q) — RBJ 2nd-order peaking (bell) EQ.
+      ;; freq [0,1] → Hz.  gain in dB.  q [0,1] → Q [0.5, 10].
+      :peak-eq     (format "(%s : fi.peak_eq(%s * ma.SR * 0.5, %s, 0.5 + %s * 9.5))"
+                           (i :in) (i :freq) (i :gain) (i :q))
       ;; de.apf(maxDel, delSamples, coeff) — Schroeder allpass; time in seconds → samples
       :allpass     (format "(%s : de.apf(192000, %s * ma.SR, %s))"
                            (i :in) (i :time) (i :coeff))

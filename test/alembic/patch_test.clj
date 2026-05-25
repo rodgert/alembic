@@ -2,7 +2,8 @@
 (ns alembic.patch-test
   (:require [clojure.test :refer [deftest is testing]]
             [alembic.patch :refer [defpatch!]]
-            [examples.ks-string]))
+            [examples.ks-string]
+            [examples.shelves]))
 
 ;; ---------------------------------------------------------------------------
 ;; Helper queries
@@ -1189,5 +1190,61 @@
       (is (= 1 (count (nodes-by-op g :ar-env)))))
     (testing "has :vca node (exciter gate)"
       (is (= 1 (count (nodes-by-op g :vca)))))
+    (testing "dominant-rate is :sample"
+      (is (= :sample (:rate g))))))
+
+;; ---------------------------------------------------------------------------
+;; :shelf-lo :shelf-hi :peak-eq
+;; ---------------------------------------------------------------------------
+
+(defpatch! shelf-lo-patch {}
+  (let [in  (audio-in)
+        out (shelf-lo in 0.1 6.0)]
+    (output out)))
+
+(defpatch! shelf-hi-patch {}
+  (let [in  (audio-in)
+        out (shelf-hi in 0.8 -6.0)]
+    (output out)))
+
+(defpatch! peak-eq-patch {}
+  (let [in  (audio-in)
+        out (peak-eq in 0.3 3.0 0.5)]
+    (output out)))
+
+(deftest shelf-lo-node-test
+  (testing "shelf-lo node created"
+    (is (= 1 (count (nodes-by-op shelf-lo-patch :shelf-lo)))))
+  (let [node (first (nodes-by-op shelf-lo-patch :shelf-lo))]
+    (testing ":shelf-lo has :in :freq :gain inlets"
+      (is (= #{:in :freq :gain} (set (keys (:inputs node))))))
+    (testing ":shelf-lo is :sample rate (IIR biquad state)"
+      (is (= :sample (:rate node))))))
+
+(deftest shelf-hi-node-test
+  (testing "shelf-hi node created"
+    (is (= 1 (count (nodes-by-op shelf-hi-patch :shelf-hi)))))
+  (let [node (first (nodes-by-op shelf-hi-patch :shelf-hi))]
+    (testing ":shelf-hi has :in :freq :gain inlets"
+      (is (= #{:in :freq :gain} (set (keys (:inputs node))))))
+    (testing ":shelf-hi is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest peak-eq-node-test
+  (testing "peak-eq node created"
+    (is (= 1 (count (nodes-by-op peak-eq-patch :peak-eq)))))
+  (let [node (first (nodes-by-op peak-eq-patch :peak-eq))]
+    (testing ":peak-eq has :in :freq :gain :q inlets"
+      (is (= #{:in :freq :gain :q} (set (keys (:inputs node))))))
+    (testing ":peak-eq is :sample rate"
+      (is (= :sample (:rate node))))))
+
+(deftest shelves-patch-test
+  (let [g examples.shelves/shelves]
+    (testing "shelves has one :shelf-lo and one :shelf-hi"
+      (is (= 1 (count (nodes-by-op g :shelf-lo))))
+      (is (= 1 (count (nodes-by-op g :shelf-hi)))))
+    (testing "shelves has two :peak-eq nodes"
+      (is (= 2 (count (nodes-by-op g :peak-eq)))))
     (testing "dominant-rate is :sample"
       (is (= :sample (:rate g))))))
