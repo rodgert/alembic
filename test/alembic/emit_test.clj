@@ -547,6 +547,31 @@
               (emit-faust table-clamp-emit-patch)))))
 
 ;; ---------------------------------------------------------------------------
+;; :buffer — read-write circular buffer
+;; ---------------------------------------------------------------------------
+
+(defpatch! buffer-emit-patch {}
+  (let [ph   (phasor 1.0)
+        sig  (sine-bi ph)
+        wpos (mul ph 4800.0)
+        rpos (sub wpos 240.0)
+        out  (buffer {:size 4800} sig wpos rpos)]
+    (output out)))
+
+(deftest buffer-emit-test
+  (let [src (emit-faust buffer-emit-patch)]
+    (testing "emits rwtable call"
+      (is (str/includes? src "rwtable(")))
+    (testing "size 4800 appears in output"
+      (is (str/includes? src "4800")))
+    (testing "int() wraps both index signals"
+      (is (= 2 (count (re-seq #"int\(" src)))))
+    (testing "initial value is 0.0"
+      (is (str/includes? src "rwtable(4800, 0.0,")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+;; ---------------------------------------------------------------------------
 ;; Level 1 extended — :ring-mod :bitcrusher
 ;; ---------------------------------------------------------------------------
 

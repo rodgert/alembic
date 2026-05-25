@@ -639,6 +639,29 @@
       (is (= 4 (get-in node [:opts :n]))))))
 
 ;; ---------------------------------------------------------------------------
+;; :buffer — read-write circular buffer
+;; ---------------------------------------------------------------------------
+
+(defpatch! buffer-test {}
+  (let [ph    (phasor 1.0)
+        sig   (sine-bi ph)
+        wpos  (mul ph 4800.0)
+        rpos  (sub wpos 240.0)
+        out   (buffer {:size 4800} sig wpos rpos)]
+    (output out)))
+
+(deftest buffer-node-test
+  (let [node (first (nodes-by-op buffer-test :buffer))]
+    (testing "has exactly one :buffer node"
+      (is (= 1 (count (nodes-by-op buffer-test :buffer)))))
+    (testing ":buffer has :in :write-pos :read-pos inlets"
+      (is (= #{:in :write-pos :read-pos} (set (keys (:inputs node))))))
+    (testing ":buffer is :sample rate"
+      (is (= :sample (:rate node))))
+    (testing ":buffer stores :size in opts"
+      (is (= 4800 (get-in node [:opts :size]))))))
+
+;; ---------------------------------------------------------------------------
 ;; Multi-output nodes — :counter carry port
 ;; ---------------------------------------------------------------------------
 

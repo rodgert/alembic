@@ -239,6 +239,12 @@
       :select      (let [n    (get (:opts node) :n 2)
                          sigs (str/join ", " (map #(i (keyword (str "in-" %))) (range n)))]
                      (format "ba.selectn(%d, int(%s), %s)" n (i :index) sigs))
+      ;; rwtable(n, init, widx, x, ridx) — write x at widx; return value at ridx.
+      ;; Positions are floats from the user; int() truncates to a sample index.
+      ;; write-gate and write-mode deferred — caller manages write semantics via write-pos.
+      :buffer      (let [{:keys [size] :or {size 48000}} (:opts node)]
+                     (format "rwtable(%d, 0.0, int(%s), %s, int(%s))"
+                             size (i :write-pos) (i :in) (i :read-pos)))
       ;; Secondary port of :counter — pulses 1.0 at the counter's wrap point
       ;; Fires when count == wrap-target on a rising clock edge.
       ;; Non-wrapping counters have no carry; emits 0.0.
