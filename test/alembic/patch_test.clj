@@ -1,7 +1,8 @@
 ; SPDX-License-Identifier: EPL-2.0
 (ns alembic.patch-test
   (:require [clojure.test :refer [deftest is testing]]
-            [alembic.patch :refer [defpatch!]]))
+            [alembic.patch :refer [defpatch!]]
+            [examples.ks-string]))
 
 ;; ---------------------------------------------------------------------------
 ;; Helper queries
@@ -1171,3 +1172,22 @@
     (let [node (first (nodes-by-op sqrt-audio-patch :sqrt))]
       (is (contains? (:inputs node) :in)))))
 
+;; ---------------------------------------------------------------------------
+;; ks-string — KS loop graph structure
+;; ---------------------------------------------------------------------------
+
+(deftest ks-string-patch-test
+  (let [g examples.ks-string/ks-string]
+    (testing "has exactly one :faust node (the KS loop body)"
+      (is (= 1 (count (nodes-by-op g :faust)))))
+    (testing "faust node has :exc :freq :scale :damp inlets"
+      (let [node (first (nodes-by-op g :faust))]
+        (is (= #{:exc :freq :scale :damp} (set (keys (:inputs node)))))))
+    (testing "has :noise node (exciter source)"
+      (is (= 1 (count (nodes-by-op g :noise)))))
+    (testing "has :ar-env node (exciter envelope)"
+      (is (= 1 (count (nodes-by-op g :ar-env)))))
+    (testing "has :vca node (exciter gate)"
+      (is (= 1 (count (nodes-by-op g :vca)))))
+    (testing "dominant-rate is :sample"
+      (is (= :sample (:rate g))))))
