@@ -67,21 +67,27 @@
         (throw (ex-info "output must not be nested — use at top level of the patch body" {}))
 
         :else
-        (let [op-kw  (keyword (name op))
-              inlets (or (get ops/inlet-names op-kw)
-                         (throw (ex-info (str "Unknown op: " op
-                                              " — add an entry to alembic.ops/inlet-names")
-                                         {:op op-kw})))
-              _      (when (not= (count inlets) (count args))
-                       (throw (ex-info (str op " expects " (count inlets)
-                                            " arg(s), got " (count args))
-                                       {:op op :expected (count inlets) :got (count args)})))
-              srcs   (mapv #(walk-expr % state) args)
-              id     (next-id! counter)
-              rate   (or (get ops/node-rate op-kw)
-                         (throw (ex-info (str "No rate entry for op: " op-kw) {:op op-kw})))
-              inputs (zipmap inlets srcs)
-              node   {:id id :op op-kw :rate rate :inputs inputs}]
+        (let [op-kw     (keyword (name op))
+              ;; Optional compile-time options map as first argument:
+              ;;   (vco {:shape :saw} freq-signal)
+              has-opts? (and (seq args) (map? (first args)))
+              opts      (if has-opts? (first args) {})
+              sig-args  (if has-opts? (rest args) args)
+              inlets    (or (get ops/inlet-names op-kw)
+                            (throw (ex-info (str "Unknown op: " op
+                                                 " — add an entry to alembic.ops/inlet-names")
+                                            {:op op-kw})))
+              _         (when (not= (count inlets) (count sig-args))
+                          (throw (ex-info (str op " expects " (count inlets)
+                                              " arg(s), got " (count sig-args))
+                                          {:op op :expected (count inlets) :got (count sig-args)})))
+              srcs      (mapv #(walk-expr % state) sig-args)
+              id        (next-id! counter)
+              rate      (or (get ops/node-rate op-kw)
+                            (throw (ex-info (str "No rate entry for op: " op-kw) {:op op-kw})))
+              inputs    (zipmap inlets srcs)
+              node      (cond-> {:id id :op op-kw :rate rate :inputs inputs}
+                          (seq opts) (assoc :opts opts))]
           (swap! nodes assoc id node)
           (doseq [[inlet src-id] (map vector inlets srcs)]
             (let [src-rate  (:rate (get @nodes src-id))
@@ -133,7 +139,14 @@
 
   Op names in the authoring form: phasor, sine-bi, sine-uni, tri, rect,
   mul, add, sub, div, history, delay, sah, delta, wrap, fold, clip, smooth,
-  ar-env. Use (param kw) for block-rate plugin parameters.
+  ar-env, ladder, svf, one-pole, dc-block, allpass, vca, slew, sample-hold,
+  comparator, noise, pink-noise, crossfade, ring-mod, bitcrusher, soft-clip,
+  hard-clip, wave-fold. Use (param kw) for block-rate plugin parameters.
+
+  Ops that accept compile-time options as a map before signal arguments:
+    (vco {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5} freq)
+    (counter {:max 16 :dir :up|:down :wrap true|false} clock reset)
+    (table {:data [floats] :size N :mode :wrap|:clamp|:fold} index)
 
   Output forms:
     (output expr)         — unnamed, assigned channel 0, 1, 2 … in declaration order

@@ -66,7 +66,17 @@
    ;; :hard-clip — cubic polynomial soft-then-hard overdrive, clips at ±1
    :hard-clip   [:in]
    ;; :wave-fold — triangle wavefolder; folds input > 1 or < −1 back into [−1, 1]
-   :wave-fold   [:in]})
+   :wave-fold   [:in]
+   ;; ---- ops that accept a compile-time options map before signal args ----
+   ;; :vco — anti-aliased oscillator
+   ;;   opts: {:shape :saw|:sine|:square|:triangle|:pulse  :pw 0.5  :sync false}
+   :vco         [:freq]
+   ;; :counter — clocked integer counter; carry output requires multi-output extension
+   ;;   opts: {:max 16 :dir :up|:down :wrap true|false}
+   :counter     [:clock :reset]
+   ;; :table — read-only lookup table with interpolation
+   ;;   opts: {:data [floats] :size N :mode :wrap|:clamp|:fold}
+   :table       [:index]})
 
 (def node-rate
   "Maps op keyword → rate keyword (:sample | :block | :beat)."
@@ -105,5 +115,8 @@
    :soft-clip   :sample
    :hard-clip   :sample
    :wave-fold   :sample
+   :vco         :sample
+   :counter     :sample
+   :table       :sample
    :param       :block
    :const       :sample})

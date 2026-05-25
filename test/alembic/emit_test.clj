@@ -410,6 +410,140 @@
       (is (re-find #"process = n\d+;" src)))))
 
 ;; ---------------------------------------------------------------------------
+;; Compile-time options — :vco shapes
+;; ---------------------------------------------------------------------------
+
+(defpatch! vco-saw-emit-patch {}
+  (let [osc (vco {:shape :saw} 440.0)]
+    (output osc)))
+
+(defpatch! vco-sine-emit-patch {}
+  (let [osc (vco {:shape :sine} 440.0)]
+    (output osc)))
+
+(defpatch! vco-square-emit-patch {}
+  (let [osc (vco {:shape :square} 440.0)]
+    (output osc)))
+
+(defpatch! vco-triangle-emit-patch {}
+  (let [osc (vco {:shape :triangle} 440.0)]
+    (output osc)))
+
+(defpatch! vco-pulse-emit-patch {}
+  (let [osc (vco {:shape :pulse :pw 0.3} 440.0)]
+    (output osc)))
+
+(deftest vco-shape-emit-test
+  (testing ":saw emits os.lf_saw"
+    (is (str/includes? (emit-faust vco-saw-emit-patch) "os.lf_saw(")))
+  (testing ":sine emits os.osc"
+    (is (str/includes? (emit-faust vco-sine-emit-patch) "os.osc(")))
+  (testing ":square emits os.lf_squarewave"
+    (is (str/includes? (emit-faust vco-square-emit-patch) "os.lf_squarewave(")))
+  (testing ":triangle emits os.lf_triangle"
+    (is (str/includes? (emit-faust vco-triangle-emit-patch) "os.lf_triangle(")))
+  (testing ":pulse emits select2 with phasor comparison"
+    (let [src (emit-faust vco-pulse-emit-patch)]
+      (is (str/includes? src "select2("))
+      (is (str/includes? src "os.phasor("))
+      ;; pw=0.3 should appear as a numeric literal in the expression
+      (is (str/includes? src "0.3")))))
+
+(deftest vco-different-shapes-differ-test
+  (testing "different shapes produce different Faust output"
+    (is (not= (emit-faust vco-saw-emit-patch)
+              (emit-faust vco-sine-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Compile-time options — :counter
+;; ---------------------------------------------------------------------------
+
+(defpatch! counter-up-emit-patch {}
+  (let [clk (phasor 4.0)
+        rst (phasor 0.5)
+        out (counter {:max 8 :dir :up :wrap true} clk rst)]
+    (output out)))
+
+(defpatch! counter-down-emit-patch {}
+  (let [clk (phasor 4.0)
+        rst (phasor 0.5)
+        out (counter {:max 16 :dir :down :wrap false} clk rst)]
+    (output out)))
+
+(deftest counter-up-emit-test
+  (let [src (emit-faust counter-up-emit-patch)]
+    (testing "emits 1-sample feedback loop"
+      (is (str/includes? src "~ _")))
+    (testing "emits edge detection via delayed clock comparison"
+      (is (str/includes? src "> 0.5"))
+      (is (str/includes? src "<= 0.5")))
+    (testing "emits fmod for wrap"
+      (is (str/includes? src "fmod(")))
+    (testing "max value 8 appears in output"
+      (is (str/includes? src "8.0")))
+    (testing "single process output"
+      (is (re-find #"process = n\d+;" src)))))
+
+(deftest counter-down-emit-test
+  (let [src (emit-faust counter-down-emit-patch)]
+    (testing "down+no-wrap emits max()"
+      (is (str/includes? src "max(")))
+    (testing "starts at max-1 (15) on reset"
+      (is (str/includes? src "15.0")))))
+
+(deftest counter-up-vs-down-differ-test
+  (testing "different dir options produce different Faust output"
+    (is (not= (emit-faust counter-up-emit-patch)
+              (emit-faust counter-down-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
+;; Compile-time options — :table
+;; ---------------------------------------------------------------------------
+
+(defpatch! table-wrap-emit-patch {}
+  (let [ph  (phasor 440.0)
+        idx (mul ph 3.0)
+        out (table {:data [0.0 0.5 1.0 0.5] :size 4 :mode :wrap} idx)]
+    (output out)))
+
+(defpatch! table-clamp-emit-patch {}
+  (let [ph  (phasor 440.0)
+        idx (mul ph 3.0)
+        out (table {:data [0.0 0.5 1.0 0.5] :size 4 :mode :clamp} idx)]
+    (output out)))
+
+(defpatch! table-fold-emit-patch {}
+  (let [ph  (phasor 440.0)
+        idx (mul ph 3.0)
+        out (table {:data [0.0 0.5 1.0 0.5] :size 4 :mode :fold} idx)]
+    (output out)))
+
+(deftest table-emit-test
+  (testing "emits rdtable call"
+    (is (str/includes? (emit-faust table-wrap-emit-patch) "rdtable(")))
+  (testing "emits waveform with data"
+    (is (str/includes? (emit-faust table-wrap-emit-patch) "waveform{")))
+  (testing "data values appear in output"
+    (let [src (emit-faust table-wrap-emit-patch)]
+      (is (str/includes? src "0.5"))
+      (is (str/includes? src "1.0"))))
+  (testing "size 4 appears in output"
+    (is (str/includes? (emit-faust table-wrap-emit-patch) "4"))))
+
+(deftest table-modes-differ-test
+  (testing ":wrap uses floor-based positive modulo"
+    (is (str/includes? (emit-faust table-wrap-emit-patch) "floor(")))
+  (testing ":clamp uses max/min"
+    (let [src (emit-faust table-clamp-emit-patch)]
+      (is (str/includes? src "max("))
+      (is (str/includes? src "min("))))
+  (testing ":fold uses abs"
+    (is (str/includes? (emit-faust table-fold-emit-patch) "abs(")))
+  (testing "different modes produce different index expressions"
+    (is (not= (emit-faust table-wrap-emit-patch)
+              (emit-faust table-clamp-emit-patch)))))
+
+;; ---------------------------------------------------------------------------
 ;; Level 1 extended — :ring-mod :bitcrusher
 ;; ---------------------------------------------------------------------------
 

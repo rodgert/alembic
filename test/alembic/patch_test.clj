@@ -440,6 +440,111 @@
     (is (= :sample (:rate (first (nodes-by-op wave-fold-test :wave-fold)))))))
 
 ;; ---------------------------------------------------------------------------
+;; Compile-time options — :vco :counter :table
+;; ---------------------------------------------------------------------------
+
+(defpatch! vco-saw-test {}
+  (let [osc (vco {:shape :saw} 440.0)]
+    (output osc)))
+
+(defpatch! vco-sine-test {}
+  (let [osc (vco {:shape :sine} 440.0)]
+    (output osc)))
+
+(defpatch! vco-pulse-test {}
+  (let [osc (vco {:shape :pulse :pw 0.3} 440.0)]
+    (output osc)))
+
+(deftest vco-opts-stored-test
+  (testing ":saw shape stored in :opts"
+    (let [node (first (nodes-by-op vco-saw-test :vco))]
+      (is (= :saw (get-in node [:opts :shape])))))
+  (testing ":sine shape stored in :opts"
+    (let [node (first (nodes-by-op vco-sine-test :vco))]
+      (is (= :sine (get-in node [:opts :shape])))))
+  (testing ":pulse shape and :pw stored in :opts"
+    (let [node (first (nodes-by-op vco-pulse-test :vco))]
+      (is (= :pulse (get-in node [:opts :shape])))
+      (is (= 0.3    (get-in node [:opts :pw]))))))
+
+(deftest vco-inlets-test
+  (testing ":vco has :freq signal inlet"
+    (doseq [patch [vco-saw-test vco-sine-test vco-pulse-test]]
+      (let [node (first (nodes-by-op patch :vco))]
+        (is (contains? (:inputs node) :freq)))))
+  (testing ":vco is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op vco-saw-test :vco)))))))
+
+(deftest vco-without-opts-defaults-test
+  (testing "opts are omitted from node when not supplied to other ops"
+    ;; phasor is a plain op — its node should have no :opts key
+    (let [node (first (nodes-by-op vco-saw-test :const))]
+      (is (nil? (:opts node))))))
+
+(defpatch! counter-up-test {}
+  (let [clk (phasor 4.0)
+        rst (phasor 0.5)
+        ctr (counter {:max 8 :dir :up :wrap true} clk rst)]
+    (output ctr)))
+
+(defpatch! counter-down-test {}
+  (let [clk (phasor 4.0)
+        rst (phasor 0.5)
+        ctr (counter {:max 16 :dir :down :wrap false} clk rst)]
+    (output ctr)))
+
+(deftest counter-opts-stored-test
+  (testing ":up counter opts stored correctly"
+    (let [node (first (nodes-by-op counter-up-test :counter))]
+      (is (= 8    (get-in node [:opts :max])))
+      (is (= :up  (get-in node [:opts :dir])))
+      (is (true?  (get-in node [:opts :wrap])))))
+  (testing ":down counter opts stored correctly"
+    (let [node (first (nodes-by-op counter-down-test :counter))]
+      (is (= 16    (get-in node [:opts :max])))
+      (is (= :down (get-in node [:opts :dir])))
+      (is (false?  (get-in node [:opts :wrap]))))))
+
+(deftest counter-inlets-test
+  (testing ":counter has :clock and :reset signal inlets"
+    (let [node (first (nodes-by-op counter-up-test :counter))]
+      (is (contains? (:inputs node) :clock))
+      (is (contains? (:inputs node) :reset))))
+  (testing ":counter is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op counter-up-test :counter)))))))
+
+(def ^:private triangle-data [0.0 0.25 0.5 0.75 1.0 0.75 0.5 0.25])
+
+(defpatch! table-wrap-test {}
+  (let [ph  (phasor 440.0)
+        idx (mul ph 7.0)
+        out (table {:data triangle-data :size 8 :mode :wrap} idx)]
+    (output out)))
+
+(defpatch! table-clamp-test {}
+  (let [ph  (phasor 440.0)
+        idx (mul ph 7.0)
+        out (table {:data triangle-data :size 8 :mode :clamp} idx)]
+    (output out)))
+
+(deftest table-opts-stored-test
+  (testing ":table opts stored correctly"
+    (let [node (first (nodes-by-op table-wrap-test :table))]
+      (is (= 8     (get-in node [:opts :size])))
+      (is (= :wrap (get-in node [:opts :mode])))
+      (is (= triangle-data (get-in node [:opts :data])))))
+  (testing ":clamp mode stored"
+    (let [node (first (nodes-by-op table-clamp-test :table))]
+      (is (= :clamp (get-in node [:opts :mode]))))))
+
+(deftest table-inlets-test
+  (testing ":table has :index signal inlet"
+    (let [node (first (nodes-by-op table-wrap-test :table))]
+      (is (contains? (:inputs node) :index))))
+  (testing ":table is :sample rate"
+    (is (= :sample (:rate (first (nodes-by-op table-wrap-test :table)))))))
+
+;; ---------------------------------------------------------------------------
 ;; Dominant rate
 ;; ---------------------------------------------------------------------------
 

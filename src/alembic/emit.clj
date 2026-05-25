@@ -176,6 +176,65 @@
       ;; Uses positive-modulo formula: floor handles negatives correctly in Faust
       :wave-fold   (format "(1.0 - 2.0 * abs((%s + 1.0 - 4.0 * floor((%s + 1.0) / 4.0)) / 2.0 - 1.0))"
                            (i :in) (i :in))
+      ;; ---- ops that use compile-time :opts ----
+      ;; :vco — oscillator shape selected at compile time from {:shape kw}
+      ;; Uses Faust oscillators.lib bandlimited waveforms.
+      ;; PolyBLEP correction: lf_saw/lf_squarewave are naive; BLEPed variants TBD.
+      :vco         (let [shape (get (:opts node) :shape :saw)
+                         pw    (get (:opts node) :pw 0.5)
+                         freq  (i :freq)]
+                     (case shape
+                       :sine     (format "os.osc(%s)" freq)
+                       :saw      (format "os.lf_saw(%s)" freq)
+                       :square   (format "os.lf_squarewave(%s)" freq)
+                       :triangle (format "os.lf_triangle(%s)" freq)
+                       :pulse    (format "select2(os.phasor(1.0, %s) < %s, -1.0, 1.0)"
+                                         freq (fmt-num pw))
+                       (throw (ex-info (str "Unknown :vco :shape — expected :sine :saw "
+                                            ":square :triangle :pulse, got: " shape)
+                                       {:shape shape}))))
+      ;; :counter — clock-gated integer counter; dir and wrap from compile-time opts.
+      ;; Edge detection: rising edge of :clock → increment/decrement.
+      ;; :carry output requires multi-output support; emits count only for now.
+      :counter     (let [{:keys [max dir wrap] :or {max 16 dir :up wrap true}} (:opts node)
+                         clk  (i :clock)
+                         rst  (i :reset)
+                         edge (str "(" clk " > 0.5) & (" clk "' <= 0.5)")]
+                     (case dir
+                       :up   (if wrap
+                               (format "(select2(%s > 0.5, select2(%s, _, fmod(_ + 1.0, %d.0)), 0.0) ~ _)"
+                                       rst edge max)
+                               (format "(select2(%s > 0.5, select2(%s, _, min(_ + 1.0, %d.0)), 0.0) ~ _)"
+                                       rst edge (dec max)))
+                       :down (if wrap
+                               (format "(select2(%s > 0.5, select2(%s, _, fmod(_ - 1.0 + %d.0, %d.0)), %d.0) ~ _)"
+                                       rst edge max max (dec max))
+                               (format "(select2(%s > 0.5, select2(%s, _, max(_ - 1.0, 0.0)), %d.0) ~ _)"
+                                       rst edge (dec max)))
+                       (throw (ex-info (str ":counter :dir :up-down requires multi-output support "
+                                            "(not yet implemented)")
+                                       {:dir dir}))))
+      ;; :table — read-only lookup via Faust rdtable + waveform.
+      ;; Index modes: :wrap (positive modulo), :clamp, :fold (triangle reflection).
+      :table       (let [{:keys [data size mode] :or {mode :wrap}} (:opts node)
+                         _ (when (nil? data)
+                             (throw (ex-info ":table requires :data in opts (file refs not yet supported)"
+                                             {:opts (:opts node)})))
+                         n        (or size (count data))
+                         data-str (str/join ", " (map fmt-num data))
+                         idx      (i :index)
+                         idx-expr (case mode
+                                    :wrap  (format "int(%s - %d.0 * floor(%s / %d.0))"
+                                                   idx n idx n)
+                                    :clamp (format "int(max(0.0, min(%d.0, %s)))"
+                                                   (dec n) idx)
+                                    :fold  (let [m (dec n)]
+                                             (format "int(%d.0 - abs(%d.0 - (%s - %d.0 * floor(%s / %d.0))))"
+                                                     m m idx (* 2 m) idx (* 2 m)))
+                                    (throw (ex-info (str "Unknown :table :mode: " mode
+                                                         " — expected :wrap :clamp :fold")
+                                                    {:mode mode})))]
+                     (format "rdtable(%d, waveform{%s}, %s)" n data-str idx-expr))
       :faust       (:source node)
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))
