@@ -128,3 +128,11 @@
    :select      :sample
    :param       :block
    :const       :sample})
+
+(def port-node-specs
+  "Secondary port nodes created automatically for multi-output ops.
+  Maps op-kw → {port-name {:op port-op-kw :inlets [inlet-kws]}}.
+  :source always refers to the primary node id; other inlet names are
+  resolved from the primary node's own inputs map by the same key."
+  {:counter    {:carry    {:op :counter-carry  :inlets [:source :clock]}}
+   :comparator {:inv-gate {:op :comparator-inv :inlets [:source]}}})

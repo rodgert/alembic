@@ -312,7 +312,8 @@
 
 (defpatch! comparator-test {}
   (let [osc (phasor 440.0)
-        out (comparator osc 0.0)]
+        cmp (comparator osc 0.0)
+        out (:out cmp)]
     (output out)))
 
 (deftest comparator-node-test
@@ -484,14 +485,16 @@
 (defpatch! counter-up-test {}
   (let [clk (phasor 4.0)
         rst (phasor 0.5)
-        ctr (counter {:max 8 :dir :up :wrap true} clk rst)]
-    (output ctr)))
+        ctr (counter {:max 8 :dir :up :wrap true} clk rst)
+        out (:out ctr)]
+    (output out)))
 
 (defpatch! counter-down-test {}
   (let [clk (phasor 4.0)
         rst (phasor 0.5)
-        ctr (counter {:max 16 :dir :down :wrap false} clk rst)]
-    (output ctr)))
+        ctr (counter {:max 16 :dir :down :wrap false} clk rst)
+        out (:out ctr)]
+    (output out)))
 
 (deftest counter-opts-stored-test
   (testing ":up counter opts stored correctly"
@@ -634,3 +637,93 @@
     (testing ":select n=4 has four signal inlets plus :index"
       (is (= #{:in-0 :in-1 :in-2 :in-3 :index} (set (keys (:inputs node)))))
       (is (= 4 (get-in node [:opts :n]))))))
+
+;; ---------------------------------------------------------------------------
+;; Multi-output nodes — :counter carry port
+;; ---------------------------------------------------------------------------
+
+(defpatch! counter-carry-patch {}
+  (let [clk   (phasor 4.0)
+        rst   (comparator clk 0.5)
+        ctr   (counter {:max 8} clk (:out rst))
+        cnt   (:out ctr)
+        carry (:carry ctr)]
+    (output cnt)
+    (output carry)))
+
+(deftest counter-multi-output-test
+  (testing ":counter creates a primary :counter node"
+    (is (= 1 (count (nodes-by-op counter-carry-patch :counter)))))
+  (testing ":counter creates a secondary :counter-carry node"
+    (is (= 1 (count (nodes-by-op counter-carry-patch :counter-carry)))))
+  (let [ctr-node   (first (nodes-by-op counter-carry-patch :counter))
+        carry-node (first (nodes-by-op counter-carry-patch :counter-carry))]
+    (testing ":counter-carry :source points to the :counter node"
+      (is (= (:id ctr-node) (get-in carry-node [:inputs :source]))))
+    (testing ":counter-carry :clock points to the clock signal (same as :counter)"
+      (is (= (get-in ctr-node [:inputs :clock])
+             (get-in carry-node [:inputs :clock]))))
+    (testing ":counter-carry inherits :opts from :counter"
+      (is (= {:max 8} (:opts carry-node)))))
+  (testing "both ports appear in patch outputs"
+    (is (= 2 (count (:outputs counter-carry-patch))))))
+
+;; ---------------------------------------------------------------------------
+;; Multi-output nodes — :comparator inv-gate port
+;; ---------------------------------------------------------------------------
+
+(defpatch! comparator-inv-patch {}
+  (let [sig  (phasor 1.0)
+        cmp  (comparator sig 0.5)
+        gate (:out cmp)
+        inv  (:inv-gate cmp)]
+    (output gate)
+    (output inv)))
+
+(deftest comparator-multi-output-test
+  (testing ":comparator creates a primary :comparator node"
+    (is (= 1 (count (nodes-by-op comparator-inv-patch :comparator)))))
+  (testing ":comparator creates a secondary :comparator-inv node"
+    (is (= 1 (count (nodes-by-op comparator-inv-patch :comparator-inv)))))
+  (let [cmp-node (first (nodes-by-op comparator-inv-patch :comparator))
+        inv-node (first (nodes-by-op comparator-inv-patch :comparator-inv))]
+    (testing ":comparator-inv :source points to the :comparator node"
+      (is (= (:id cmp-node) (get-in inv-node [:inputs :source])))))
+  (testing "both ports appear in patch outputs"
+    (is (= 2 (count (:outputs comparator-inv-patch))))))
+
+;; ---------------------------------------------------------------------------
+;; Multi-output — error cases
+;; ---------------------------------------------------------------------------
+
+(defn- cause-msg-matches? [e pattern]
+  (loop [ex e]
+    (cond (nil? ex) false
+          (re-find pattern (str (.getMessage ex))) true
+          :else (recur (.getCause ex)))))
+
+(deftest multi-output-direct-use-error-test
+  (testing "using a multi-output node directly throws a clear error"
+    (is (try
+          (macroexpand
+            '(alembic.patch/defpatch! bad-patch {}
+               (let [clk (alembic.patch/phasor 1.0)
+                     rst (alembic.patch/comparator clk 0.5)
+                     ctr (alembic.patch/counter {:max 4} clk (:out rst))]
+                 (output ctr))))
+          false
+          (catch Exception e (cause-msg-matches? e #"multi-output node"))))))
+
+(deftest unknown-port-error-test
+  (testing "accessing an unknown port throws a clear error"
+    (is (try
+          (macroexpand
+            '(alembic.patch/defpatch! bad-patch2 {}
+               (let [clk (alembic.patch/phasor 1.0)
+                     rst (alembic.patch/comparator clk 0.5)
+                     ctr (alembic.patch/counter {:max 4} clk (:out rst))
+                     bad (:nonexistent ctr)]
+                 (output bad))))
+          false
+          (catch Exception e (cause-msg-matches? e #"Unknown port"))))))
+

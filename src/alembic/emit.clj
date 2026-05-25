@@ -239,6 +239,20 @@
       :select      (let [n    (get (:opts node) :n 2)
                          sigs (str/join ", " (map #(i (keyword (str "in-" %))) (range n)))]
                      (format "ba.selectn(%d, int(%s), %s)" n (i :index) sigs))
+      ;; Secondary port of :counter — pulses 1.0 at the counter's wrap point
+      ;; Fires when count == wrap-target on a rising clock edge.
+      ;; Non-wrapping counters have no carry; emits 0.0.
+      :counter-carry
+      (let [{:keys [max dir wrap] :or {max 16 dir :up wrap true}} (:opts node)
+            src  (i :source)
+            clk  (i :clock)
+            edge (str "(" clk " > 0.5) & (" clk "' <= 0.5)")]
+        (if-not wrap
+          "0.0"
+          (let [wrap-target (case dir :up "0.0" :down (str (dec max) ".0"))]
+            (format "float((%s == %s) & %s)" src wrap-target edge))))
+      ;; Secondary port of :comparator — logical inverse of the primary gate
+      :comparator-inv (format "(1.0 - %s)" (i :source))
       :faust       (:source node)
       (throw (ex-info (str "Unknown op in Faust emitter: " (:op node))
                       {:node node})))))
