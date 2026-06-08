@@ -182,3 +182,26 @@
         (is (.exists (io/file clap-path))))
       (testing "bundle structure is correct"
         (is (.exists (io/file clap-path "Contents" "MacOS" "alembic-test-fm")))))))
+
+(deftest compile-to-clap-polyphonic-test
+  (when (cpp-build-ready?)
+    (let [clap-path (compile-to-clap simple-patch
+                                     :name       "alembic-test-poly"
+                                     :polyphonic true
+                                     :nvoices    8)]
+      (testing "polyphonic patch compiles to .clap"
+        (is (.exists (io/file clap-path))))
+      (testing "bundle structure is correct"
+        (is (.exists (io/file clap-path "Contents" "MacOS" "alembic-test-poly")))))))
+
+(deftest compile-to-clap-error-test
+  (testing "invalid DSP source throws ex-info with :errors key"
+    (let [bad-graph {:nodes   {:n0 {:id :n0 :op :faust
+                                    :source "INVALID { DSP }"
+                                    :rate :sample}}
+                     :edges   []
+                     :params  {}
+                     :outputs [{:node :n0 :channel 0 :name "Main"}]
+                     :rate    :sample}]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"faust"
+            (compile-to-clap bad-graph))))))
