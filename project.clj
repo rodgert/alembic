@@ -7,8 +7,9 @@
   :dependencies [[org.clojure/clojure "1.12.2"]
                  [nomos-maths "0.2.1"]
                  [nomos-topology "0.1.0"]]
-  :source-paths  ["src" "."]
+  :source-paths  ["src"]
   :test-paths    ["test"]
   :target-path   "target"
   :clean-targets ^{:protect false} ["target"]
-  :profiles {:dev {:dependencies []}})
+  :profiles {:dev  {:source-paths ["."]
+                    :dependencies []}})
