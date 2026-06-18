@@ -49,7 +49,7 @@ function(alembic_add_patch target_name cpp_file metadata_dir)
             BUNDLE                              TRUE
             BUNDLE_EXTENSION                    "clap"
             MACOSX_BUNDLE_BUNDLE_NAME           "${target_name}"
-            MACOSX_BUNDLE_GUI_IDENTIFIER        "org.cljseq.alembic.${target_name}"
+            MACOSX_BUNDLE_GUI_IDENTIFIER        "org.nomos-studio.alembic.${target_name}"
             MACOSX_BUNDLE_SHORT_VERSION_STRING  "1.0"
             PREFIX                              ""
             SUFFIX                              "")

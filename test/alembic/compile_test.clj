@@ -176,7 +176,7 @@
   (when (cpp-build-ready?)
     (let [clap-path (compile-to-clap fm-patch
                                      :name    "alembic-test-fm"
-                                     :vendor  "cljseq-test"
+                                     :vendor  "alembic-test"
                                      :version "0.1.0")]
       (testing "FM patch with params compiles to .clap"
         (is (.exists (io/file clap-path))))

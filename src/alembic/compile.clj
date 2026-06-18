@@ -179,7 +179,7 @@
 (defn- write-metadata-header!
   "Write plugin_metadata.h into `dir` for the CLAP arch file."
   [dir name vendor version polyphonic nvoices]
-  (let [id (str "org.cljseq.alembic." (str/lower-case name))]
+  (let [id (str "org.nomos-studio.alembic." (str/lower-case name))]
     (spit (io/file dir "plugin_metadata.h")
           (str "#define FAUST_PLUGIN_ID          \"" id "\"\n"
                "#define FAUST_PLUGIN_NAME        \"" name "\"\n"
